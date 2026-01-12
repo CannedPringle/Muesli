@@ -32,6 +32,7 @@ export async function PATCH(request: NextRequest) {
       vaultPath: 'vault_path',
       whisperModelPath: 'whisper_model_path',
       whisperModelName: 'whisper_model_name',
+      whisperPrompt: 'whisper_prompt',
       ollamaBaseUrl: 'ollama_base_url',
       ollamaModel: 'ollama_model',
       keepAudio: 'keep_audio',

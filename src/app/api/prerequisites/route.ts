@@ -16,6 +16,11 @@ export async function GET() {
       checkOllama(),
     ]);
     
+    // Build whisper install command with specific model name
+    const whisperInstallCommand = whisperResult.modelExists 
+      ? 'npm run setup:whisper'
+      : `npm run setup:whisper:${whisperResult.modelName}`;
+    
     const result: PrerequisitesCheck = {
       ffmpeg: {
         name: 'ffmpeg',
@@ -27,9 +32,9 @@ export async function GET() {
       whisper: {
         name: 'whisper.cpp',
         installed: whisperResult.installed && whisperResult.modelExists,
-        version: whisperResult.modelExists ? 'Model found' : undefined,
+        version: whisperResult.modelExists ? `Model: ${whisperResult.modelName}` : undefined,
         error: whisperResult.error,
-        installCommand: 'npm run setup:whisper',
+        installCommand: whisperInstallCommand,
       },
       ollama: {
         name: 'Ollama',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { JobProgress } from '@/components/job-progress';
 import { TranscriptEditor } from '@/components/transcript-editor';
 import { PromptForm } from '@/components/prompt-form';
 import { NoteActions } from '@/components/note-actions';
+import { DatePicker } from '@/components/ui/date-picker';
 import { 
   useCreateEntry, 
   useUploadAudio, 
@@ -30,11 +32,19 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
   const [entryType, setEntryType] = useState<EntryType>('brain-dump');
   const [entryId, setEntryId] = useState<string | null>(null);
   const [audioSource, setAudioSource] = useState<'record' | 'upload'>('record');
+  const [entryDate, setEntryDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
 
   const { createEntry, isCreating } = useCreateEntry();
   const { uploadAudio, isUploading } = useUploadAudio();
   const { entry, updateEntry, cancelEntry, refetch } = useEntry(entryId);
   const { openInObsidian, revealInFinder, isOpening } = useOpenNote();
+
+  // Sync entryDate from entry when it's loaded
+  useEffect(() => {
+    if (entry?.entryDate) {
+      setEntryDate(entry.entryDate);
+    }
+  }, [entry?.entryDate]);
 
   // Watch entry stage and update wizard step accordingly
   useEffect(() => {
@@ -72,14 +82,17 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
 
   const handleAudioReady = async (audioBlob: Blob | File) => {
     try {
-      // Create entry first
-      const id = await createEntry(entryType);
+      // Create entry first with the selected date
+      const id = await createEntry(entryType, entryDate);
       setEntryId(id);
       
       // Upload audio (this starts processing)
       const blob = audioBlob instanceof File ? audioBlob : audioBlob;
       const filename = audioBlob instanceof File ? audioBlob.name : 'recording.webm';
       await uploadAudio(id, blob, filename);
+      
+      // Refetch to get latest state after queuing
+      await refetch();
       
       setStep('processing');
     } catch (err) {
@@ -101,6 +114,13 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
     await updateEntry({ action: 'continue' });
   };
 
+  const handleDateChange = async (newDate: string) => {
+    setEntryDate(newDate);
+    if (entryId) {
+      await updateEntry({ entryDate: newDate });
+    }
+  };
+
   const handlePromptsSave = async (answers: PromptAnswers) => {
     await updateEntry({ promptAnswers: answers });
   };
@@ -113,6 +133,7 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
     setEntryId(null);
     setStep('select-type');
     setEntryType('brain-dump');
+    setEntryDate(format(new Date(), 'yyyy-MM-dd'));
     onComplete?.();
   };
 
@@ -143,6 +164,12 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
           <EntryTypeSelector
             value={entryType}
             onChange={setEntryType}
+          />
+
+          <DatePicker
+            value={entryDate}
+            onChange={setEntryDate}
+            label="Entry Date"
           />
           
           <div className="flex justify-center">
@@ -231,6 +258,12 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
               Review and edit the transcription if needed
             </p>
           </div>
+
+          <DatePicker
+            value={entryDate}
+            onChange={handleDateChange}
+            label="Entry Date"
+          />
 
           <TranscriptEditor
             transcript={entry.rawTranscript || ''}

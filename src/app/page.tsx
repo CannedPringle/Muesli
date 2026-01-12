@@ -65,7 +65,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6" />
-            <h1 className="text-xl font-bold">Whisper Journal</h1>
+            <h1 className="text-xl font-bold">Muesli</h1>
           </div>
           <div className="flex items-center gap-1">
             <ThemeToggle />
@@ -134,7 +134,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-auto">
         <div className="container mx-auto px-4 py-4 text-center text-sm text-muted-foreground">
-          Whisper Journal — Local-first voice journaling with AI
+          Muesli — Private AI journaling for macOS
         </div>
       </footer>
     </div>

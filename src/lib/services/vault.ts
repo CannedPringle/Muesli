@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-import { getAllSettings, resolveNotePath } from '@/lib/db';
+import { getAllSettings, resolveNotePath, getJournalDir } from '@/lib/db';
 import { createSection, replaceSection, parseSectionsStrict, type SectionName } from '@/lib/markdown';
 import type { Entry, EntryType, PromptAnswers, GeneratedSections, NoteFrontmatter } from '@/types';
 
@@ -16,6 +16,14 @@ export function generateFilename(entry: Entry): string {
   const timeStr = formatInTimeZone(date, entry.timezone, 'HHmmss');
   
   return `${dateStr}-${timeStr}-${entry.entryType}.md`;
+}
+
+/**
+ * Generate relative path for note within vault
+ * Returns: journal/{filename}
+ */
+export function generateNoteRelpath(entry: Entry): string {
+  return path.join('journal', generateFilename(entry));
 }
 
 /**
@@ -40,6 +48,11 @@ function generateFrontmatter(entry: Entry): string {
     frontmatter.audioDuration = Math.round(entry.audioDurationSeconds);
   }
   
+  // Add audio file reference if available
+  if (entry.originalAudioRelpath) {
+    frontmatter.audioFile = entry.originalAudioRelpath;
+  }
+  
   const lines = ['---'];
   lines.push(`id: ${frontmatter.id}`);
   lines.push(`created: ${frontmatter.created}`);
@@ -49,6 +62,9 @@ function generateFrontmatter(entry: Entry): string {
   lines.push(`type: ${frontmatter.type}`);
   if (frontmatter.audioDuration) {
     lines.push(`audio_duration: ${frontmatter.audioDuration}`);
+  }
+  if (frontmatter.audioFile) {
+    lines.push(`audio_file: ${frontmatter.audioFile}`);
   }
   lines.push(`tags: [${frontmatter.tags.join(', ')}]`);
   lines.push('---');
@@ -77,6 +93,27 @@ function generateTitle(entry: Entry): string {
 }
 
 /**
+ * Generate audio section with both Obsidian embed and markdown link
+ * Audio path is relative from the note's location (journal/) to audio (journal/audio/)
+ */
+function generateAudioSection(entry: Entry): string | null {
+  if (!entry.originalAudioRelpath) {
+    return null;
+  }
+  
+  // Get just the filename from the full relpath (journal/audio/filename.ext -> filename.ext)
+  const audioFilename = path.basename(entry.originalAudioRelpath);
+  // Relative path from journal/ to journal/audio/
+  const relativeAudioPath = `audio/${audioFilename}`;
+  
+  const content = `## Audio
+
+[Audio Recording](${relativeAudioPath}) | ![[${relativeAudioPath}]]`;
+  
+  return content;
+}
+
+/**
  * Generate complete markdown content for a note
  */
 export function generateNoteContent(
@@ -96,6 +133,13 @@ export function generateNoteContent(
   sections.push('');
   sections.push(`#journal #${entry.entryType}`);
   sections.push('');
+  
+  // Audio section (if audio exists)
+  const audioSection = generateAudioSection(entry);
+  if (audioSection) {
+    sections.push(createSection('AUDIO', audioSection, ['immutable']));
+    sections.push('');
+  }
   
   // Entry-type specific content
   if (entry.entryType === 'brain-dump') {
@@ -158,6 +202,7 @@ ${transcript}
 
 /**
  * Write note to vault with atomic write (temp file → rename)
+ * Notes are saved to {vaultPath}/journal/
  */
 export async function writeNote(
   entry: Entry,
@@ -178,8 +223,10 @@ export async function writeNote(
     throw new Error(`Vault path does not exist: ${settings.vaultPath}`);
   }
   
-  const filename = generateFilename(entry);
-  const relpath = filename;
+  // Ensure journal directory exists
+  getJournalDir(settings.vaultPath);
+  
+  const relpath = generateNoteRelpath(entry);
   const fullPath = resolveNotePath(relpath, settings.vaultPath);
   const tempPath = `${fullPath}.tmp.${Date.now()}`;
   

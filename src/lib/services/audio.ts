@@ -1,10 +1,11 @@
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
-import { getAudioDir } from '@/lib/db';
+import { getAudioDir, resolveAudioPath } from '@/lib/db';
 
 export interface NormalizeResult {
   outputPath: string;
+  relpath: string;
   duration: number;
 }
 
@@ -15,14 +16,17 @@ export interface NormalizeOptions {
 /**
  * Normalize audio to 16kHz mono WAV for whisper.cpp
  * Uses ffmpeg CLI
+ * Saves to {vaultPath}/journal/audio/
  */
 export async function normalizeAudio(
   inputPath: string,
   outputFilename: string,
+  vaultPath: string,
   options: NormalizeOptions = {}
 ): Promise<NormalizeResult> {
-  const audioDir = getAudioDir();
+  const audioDir = getAudioDir(vaultPath);
   const outputPath = path.join(audioDir, outputFilename);
+  const relpath = path.join('journal', 'audio', outputFilename);
 
   // Get duration first
   const duration = await getAudioDuration(inputPath);
@@ -51,7 +55,7 @@ export async function normalizeAudio(
 
     ffmpeg.on('close', (code) => {
       if (code === 0) {
-        resolve({ outputPath, duration });
+        resolve({ outputPath, relpath, duration });
       } else {
         reject(new Error(`ffmpeg failed with code ${code}: ${stderr}`));
       }
@@ -61,6 +65,24 @@ export async function normalizeAudio(
       reject(new Error(`ffmpeg spawn error: ${err.message}`));
     });
   });
+}
+
+/**
+ * Save original audio file to vault
+ * Saves to {vaultPath}/journal/audio/
+ */
+export async function saveOriginalAudio(
+  inputPath: string,
+  outputFilename: string,
+  vaultPath: string
+): Promise<{ outputPath: string; relpath: string }> {
+  const audioDir = getAudioDir(vaultPath);
+  const outputPath = path.join(audioDir, outputFilename);
+  const relpath = path.join('journal', 'audio', outputFilename);
+
+  await fs.copyFile(inputPath, outputPath);
+
+  return { outputPath, relpath };
 }
 
 /**
@@ -145,11 +167,10 @@ export async function checkFfmpeg(): Promise<{ installed: boolean; version?: str
 }
 
 /**
- * Delete audio file
+ * Delete audio file from vault
  */
-export async function deleteAudioFile(relpath: string): Promise<void> {
-  const audioDir = getAudioDir();
-  const fullPath = path.join(audioDir, relpath);
+export async function deleteAudioFile(relpath: string, vaultPath: string): Promise<void> {
+  const fullPath = resolveAudioPath(relpath, vaultPath);
   
   try {
     await fs.unlink(fullPath);

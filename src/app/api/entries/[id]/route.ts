@@ -87,6 +87,11 @@ export async function PATCH(
       updates.promptAnswers = JSON.stringify(body.promptAnswers as PromptAnswers);
     }
     
+    // Update entry date (YYYY-MM-DD format)
+    if (body.entryDate !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(body.entryDate)) {
+      updates.entryDate = body.entryDate;
+    }
+    
     // Apply updates
     if (Object.keys(updates).length > 0) {
       updateEntry(id, updates);

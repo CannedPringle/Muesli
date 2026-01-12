@@ -6,6 +6,7 @@ const MARKER_END_REGEX = /<!-- WHISPER_JOURNAL:([A-Z][A-Z0-9_]*):END -->/g;
 
 // Valid section names
 export const SECTION_NAMES = [
+  'AUDIO',
   'TRANSCRIPT',
   'JOURNAL',
   'GRATITUDE',

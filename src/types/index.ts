@@ -84,6 +84,7 @@ export type SettingKey =
   | 'vault_path'
   | 'whisper_model_path'
   | 'whisper_model_name'
+  | 'whisper_prompt'
   | 'ollama_base_url'
   | 'ollama_model'
   | 'keep_audio'
@@ -94,6 +95,7 @@ export interface Settings {
   vaultPath: string | null;
   whisperModelPath: string | null;
   whisperModelName: string;
+  whisperPrompt: string;
   ollamaBaseUrl: string;
   ollamaModel: string;
   keepAudio: boolean;
@@ -133,6 +135,7 @@ export interface NoteFrontmatter {
   entryDate: string;
   type: EntryType;
   audioDuration?: number;
+  audioFile?: string;
   tags: string[];
 }
 

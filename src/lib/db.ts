@@ -95,6 +95,7 @@ db.exec(`
 // Insert default settings if not present
 const defaultSettings: [SettingKey, string][] = [
   ['whisper_model_name', 'small'],
+  ['whisper_prompt', ''],
   ['ollama_base_url', 'http://localhost:11434'],
   ['ollama_model', 'gpt-oss:20b'],
   ['keep_audio', 'true'],
@@ -182,6 +183,7 @@ export function getEntriesByDate(entryDate: string): Entry[] {
 export function updateEntry(
   id: string,
   data: Partial<{
+    entryDate: string;
     stage: JobStage;
     stageMessage: string | null;
     errorMessage: string | null;
@@ -204,6 +206,7 @@ export function updateEntry(
   const values: unknown[] = [];
   
   const fieldMap: Record<string, string> = {
+    entryDate: 'entry_date',
     stage: 'stage',
     stageMessage: 'stage_message',
     errorMessage: 'error_message',
@@ -298,6 +301,7 @@ export function getAllSettings(): Settings {
     vaultPath: settingsMap.get('vault_path') ?? null,
     whisperModelPath: settingsMap.get('whisper_model_path') ?? null,
     whisperModelName: settingsMap.get('whisper_model_name') ?? 'small',
+    whisperPrompt: settingsMap.get('whisper_prompt') ?? '',
     ollamaBaseUrl: settingsMap.get('ollama_base_url') ?? 'http://localhost:11434',
     ollamaModel: settingsMap.get('ollama_model') ?? 'gpt-oss:20b',
     keepAudio: settingsMap.get('keep_audio') !== 'false',
@@ -307,21 +311,51 @@ export function getAllSettings(): Settings {
 }
 
 // ============================================
-// Audio directory helpers
+// Path helpers
 // ============================================
 
-export function getAudioDir(): string {
-  const audioDir = path.join(DATA_DIR, 'audio');
+/**
+ * Get the audio directory inside the vault: {vaultPath}/journal/audio/
+ * Creates the directory if it doesn't exist.
+ */
+export function getAudioDir(vaultPath: string): string {
+  const audioDir = path.join(vaultPath, 'journal', 'audio');
   if (!fs.existsSync(audioDir)) {
     fs.mkdirSync(audioDir, { recursive: true });
   }
   return audioDir;
 }
 
-export function resolveAudioPath(relpath: string): string {
-  return path.join(getAudioDir(), relpath);
+/**
+ * Resolve a relative audio path to absolute path within the vault
+ */
+export function resolveAudioPath(relpath: string, vaultPath: string): string {
+  return path.join(vaultPath, relpath);
 }
 
+/**
+ * Get relative path for audio file within vault (for storing in DB and linking in markdown)
+ * Returns: journal/audio/{filename}
+ */
+export function getAudioRelpath(filename: string): string {
+  return path.join('journal', 'audio', filename);
+}
+
+/**
+ * Get the journal notes directory: {vaultPath}/journal/
+ * Creates the directory if it doesn't exist.
+ */
+export function getJournalDir(vaultPath: string): string {
+  const journalDir = path.join(vaultPath, 'journal');
+  if (!fs.existsSync(journalDir)) {
+    fs.mkdirSync(journalDir, { recursive: true });
+  }
+  return journalDir;
+}
+
+/**
+ * Resolve a relative note path to absolute path within the vault
+ */
 export function resolveNotePath(relpath: string, vaultPath: string): string {
   return path.join(vaultPath, relpath);
 }

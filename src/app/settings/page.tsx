@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Save, FolderOpen, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
   Select,
@@ -15,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { useSettings, usePrerequisites } from '@/hooks/use-entry';
+import { useSettings, usePrerequisites, useWhisperModels } from '@/hooks/use-entry';
 import { PrerequisitesCheckComponent } from '@/components/prerequisites-check';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { toast } from 'sonner';
@@ -42,11 +43,13 @@ const OLLAMA_MODELS = [
 export default function SettingsPage() {
   const { settings, isLoading, updateSettings, refetch } = useSettings();
   const { prerequisites, isLoading: prereqLoading, refetch: refetchPrereq } = usePrerequisites();
+  const { data: whisperModels, refetch: refetchWhisperModels } = useWhisperModels();
   
   const [formData, setFormData] = useState({
     vaultPath: '',
     whisperModelName: 'small',
     whisperModelPath: '',
+    whisperPrompt: '',
     ollamaBaseUrl: 'http://localhost:11434',
     ollamaModel: 'gpt-oss:20b',
     keepAudio: true,
@@ -63,6 +66,7 @@ export default function SettingsPage() {
         vaultPath: settings.vaultPath || '',
         whisperModelName: settings.whisperModelName || 'small',
         whisperModelPath: settings.whisperModelPath || '',
+        whisperPrompt: settings.whisperPrompt || '',
         ollamaBaseUrl: settings.ollamaBaseUrl || 'http://localhost:11434',
         ollamaModel: settings.ollamaModel || 'qwen2.5:7b',
         keepAudio: settings.keepAudio ?? true,
@@ -199,24 +203,64 @@ export default function SettingsPage() {
               <Label htmlFor="whisperModel">Model</Label>
               <Select
                 value={formData.whisperModelName}
-                onValueChange={(v) => handleChange('whisperModelName', v)}
+                onValueChange={(v) => {
+                  handleChange('whisperModelName', v);
+                  // Refetch models to update installed status display
+                  refetchWhisperModels();
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
                 <SelectContent>
-                  {WHISPER_MODELS.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      <div>
-                        <span className="font-medium">{model.label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          {model.description}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {WHISPER_MODELS.map((model) => {
+                    const modelInfo = whisperModels?.models.find(m => m.name === model.value);
+                    const isInstalled = modelInfo?.installed ?? false;
+                    
+                    return (
+                      <SelectItem key={model.value} value={model.value}>
+                        <div className="flex items-center gap-2">
+                          {isInstalled ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                          ) : (
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                          )}
+                          <span className="font-medium">{model.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {model.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              
+              {/* Show warning if selected model is not installed */}
+              {whisperModels && !whisperModels.selectedModelInstalled && formData.whisperModelName === whisperModels.selectedModel && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-800 dark:text-amber-200">
+                      Model &quot;{formData.whisperModelName}&quot; is not installed
+                    </p>
+                    <p className="text-amber-700 dark:text-amber-300 mt-1">
+                      Run in terminal:
+                    </p>
+                    <code className="block mt-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/50 rounded text-xs font-mono">
+                      npm run setup:whisper:{formData.whisperModelName}
+                    </code>
+                  </div>
+                </div>
+              )}
+              
+              {/* Show success if model is installed */}
+              {whisperModels && whisperModels.selectedModelInstalled && formData.whisperModelName === whisperModels.selectedModel && (
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Model installed and ready</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -229,6 +273,21 @@ export default function SettingsPage() {
               />
               <p className="text-xs text-muted-foreground">
                 Override the default model path if you have models in a custom location.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="whisperPrompt">Transcription Prompt (Optional)</Label>
+              <Textarea
+                id="whisperPrompt"
+                value={formData.whisperPrompt}
+                onChange={(e) => handleChange('whisperPrompt', e.target.value)}
+                placeholder="Claude Code, Obsidian, Next.js, TypeScript, shadcn, Tailwind"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Provide context to improve transcription accuracy. Include names, technical terms,
+                or words that are frequently misheard. Separate with commas.
               </p>
             </div>
           </CardContent>

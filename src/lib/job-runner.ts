@@ -135,9 +135,11 @@ async function finalizeCancellation(entryId: string): Promise<void> {
   const entry = getEntry(entryId);
   if (!entry) return;
   
+  const settings = getAllSettings();
+  
   // Clean up temp files
-  if (entry.normalizedAudioRelpath) {
-    await deleteAudioFile(entry.normalizedAudioRelpath);
+  if (entry.normalizedAudioRelpath && settings.vaultPath) {
+    await deleteAudioFile(entry.normalizedAudioRelpath, settings.vaultPath);
   }
   
   updateEntry(entryId, {
@@ -156,6 +158,11 @@ async function runJob(entryId: string): Promise<void> {
   const entry = getEntry(entryId);
   if (!entry) throw new Error('Entry not found');
   
+  const settings = getAllSettings();
+  if (!settings.vaultPath) {
+    throw new Error('Vault path not configured');
+  }
+  
   console.log(`[JobRunner] Starting job ${entryId} (${entry.entryType})`);
   
   // Stage: Normalizing
@@ -164,17 +171,17 @@ async function runJob(entryId: string): Promise<void> {
       throw new Error('No audio file uploaded');
     }
     
-    const inputPath = resolveAudioPath(entry.originalAudioRelpath);
+    const inputPath = resolveAudioPath(entry.originalAudioRelpath, settings.vaultPath!);
     const outputFilename = `${entryId}-normalized.wav`;
     
-    const result = await normalizeAudio(inputPath, outputFilename, {
+    const result = await normalizeAudio(inputPath, outputFilename, settings.vaultPath!, {
       onProcess: (proc) => childProcesses.set(entryId, proc),
     });
     
     childProcesses.delete(entryId);
     
     updateEntry(entryId, {
-      normalizedAudioRelpath: outputFilename,
+      normalizedAudioRelpath: result.relpath,
       audioDurationSeconds: result.duration,
     });
   })) return;
@@ -186,7 +193,7 @@ async function runJob(entryId: string): Promise<void> {
       throw new Error('No normalized audio file');
     }
     
-    const wavPath = resolveAudioPath(currentEntry.normalizedAudioRelpath);
+    const wavPath = resolveAudioPath(currentEntry.normalizedAudioRelpath, settings.vaultPath!);
     
     const result = await transcribe(wavPath, {
       onProcess: (proc) => childProcesses.set(entryId, proc),
@@ -201,20 +208,14 @@ async function runJob(entryId: string): Promise<void> {
     });
   })) return;
   
-  // For daily-reflection: wait for user review
-  const currentEntry = getEntry(entryId)!;
-  if (currentEntry.entryType === 'daily-reflection') {
-    updateEntry(entryId, {
-      stage: 'awaiting_review',
-      stageMessage: 'Waiting for transcript review',
-      lockedBy: null,
-    });
-    console.log(`[JobRunner] Job ${entryId} awaiting review`);
-    return;
-  }
-  
-  // For brain-dump and quick-note: continue automatically
-  await continueJobAfterReview(entryId);
+  // All entry types: wait for user to review transcript before continuing
+  updateEntry(entryId, {
+    stage: 'awaiting_review',
+    stageMessage: 'Waiting for transcript review',
+    lockedBy: null,
+  });
+  console.log(`[JobRunner] Job ${entryId} awaiting review`);
+  return;
 }
 
 /**
@@ -363,13 +364,13 @@ async function writeNoteAndComplete(
   
   // Clean up audio if configured
   const settings = getAllSettings();
-  if (!settings.keepAudio) {
+  if (!settings.keepAudio && settings.vaultPath) {
     const entry = getEntry(entryId)!;
     if (entry.originalAudioRelpath) {
-      await deleteAudioFile(entry.originalAudioRelpath);
+      await deleteAudioFile(entry.originalAudioRelpath, settings.vaultPath);
     }
     if (entry.normalizedAudioRelpath) {
-      await deleteAudioFile(entry.normalizedAudioRelpath);
+      await deleteAudioFile(entry.normalizedAudioRelpath, settings.vaultPath);
     }
   }
   

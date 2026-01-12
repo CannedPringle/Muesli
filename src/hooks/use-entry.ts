@@ -17,7 +17,7 @@ interface UseEntryReturn {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  updateEntry: (data: { editedTranscript?: string; promptAnswers?: PromptAnswers; action?: 'continue' }) => Promise<void>;
+  updateEntry: (data: { editedTranscript?: string; promptAnswers?: PromptAnswers; entryDate?: string; action?: 'continue' }) => Promise<void>;
   cancelEntry: () => Promise<void>;
   isPolling: boolean;
 }
@@ -57,6 +57,7 @@ export function useEntry(entryId: string | null, options: UseEntryOptions = {}):
   const updateEntry = useCallback(async (data: { 
     editedTranscript?: string; 
     promptAnswers?: PromptAnswers;
+    entryDate?: string;
     action?: 'continue';
   }) => {
     if (!entryId) return;
@@ -121,7 +122,7 @@ export function useEntry(entryId: string | null, options: UseEntryOptions = {}):
 
     // Stages that need polling
     const processingStages = [
-      'queued', 'normalizing', 'transcribing', 'generating', 'writing', 'cancel_requested'
+      'pending', 'queued', 'normalizing', 'transcribing', 'generating', 'writing', 'cancel_requested'
     ];
 
     if (processingStages.includes(entry.stage)) {
@@ -202,7 +203,7 @@ export function useEntries(limit = 50): UseEntriesReturn {
 // ============================================
 
 interface UseCreateEntryReturn {
-  createEntry: (entryType: 'brain-dump' | 'daily-reflection' | 'quick-note') => Promise<string>;
+  createEntry: (entryType: 'brain-dump' | 'daily-reflection' | 'quick-note', entryDate?: string) => Promise<string>;
   isCreating: boolean;
   error: string | null;
 }
@@ -211,7 +212,10 @@ export function useCreateEntry(): UseCreateEntryReturn {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createEntry = useCallback(async (entryType: 'brain-dump' | 'daily-reflection' | 'quick-note'): Promise<string> => {
+  const createEntry = useCallback(async (
+    entryType: 'brain-dump' | 'daily-reflection' | 'quick-note',
+    entryDate?: string
+  ): Promise<string> => {
     setIsCreating(true);
     setError(null);
     
@@ -221,6 +225,7 @@ export function useCreateEntry(): UseCreateEntryReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           entryType,
+          entryDate,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
@@ -457,5 +462,64 @@ export function useOpenNote(): UseOpenNoteReturn {
     revealInFinder: (entryId: string) => openNote(entryId, 'finder'),
     isOpening,
     error,
+  };
+}
+
+// ============================================
+// useWhisperModels - Check installed Whisper models
+// ============================================
+
+export interface WhisperModelInfo {
+  name: string;
+  size: string;
+  installed: boolean;
+  path: string;
+}
+
+export interface WhisperModelsData {
+  models: WhisperModelInfo[];
+  selectedModel: string;
+  selectedModelInstalled: boolean;
+  modelsDir: string;
+}
+
+interface UseWhisperModelsReturn {
+  data: WhisperModelsData | null;
+  isLoading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+}
+
+export function useWhisperModels(): UseWhisperModelsReturn {
+  const [data, setData] = useState<WhisperModelsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchModels = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/whisper');
+      if (!response.ok) {
+        throw new Error('Failed to fetch whisper models');
+      }
+      const result = await response.json();
+      setData(result);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  return {
+    data,
+    isLoading,
+    error,
+    refetch: fetchModels,
   };
 }

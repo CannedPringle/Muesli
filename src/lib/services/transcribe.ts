@@ -75,6 +75,13 @@ export async function transcribe(
       '-of', wavPath,       // Output file prefix (will create wavPath.txt)
     ];
 
+    // Add custom vocabulary prompt if configured
+    const whisperPrompt = getSetting('whisper_prompt');
+    if (whisperPrompt) {
+      args.push('--prompt', whisperPrompt);
+      args.push('--carry-initial-prompt');
+    }
+
     const whisper = spawn(whisperPath, args);
 
     // Allow caller to track the process for cancellation
@@ -120,10 +127,12 @@ export async function checkWhisper(): Promise<{
   modelExists: boolean;
   whisperPath: string;
   modelPath: string;
+  modelName: string;
   error?: string;
 }> {
   const whisperPath = getWhisperPath();
   const modelPath = getModelPath();
+  const modelName = getSetting('whisper_model_name') || 'small';
 
   let installed = false;
   let modelExists = false;
@@ -141,7 +150,7 @@ export async function checkWhisper(): Promise<{
     modelExists = true;
   } catch {
     if (!error) {
-      error = `Whisper model not found at ${modelPath}`;
+      error = `Whisper model "${modelName}" not found at ${modelPath}`;
     }
   }
 
@@ -150,6 +159,7 @@ export async function checkWhisper(): Promise<{
     modelExists,
     whisperPath,
     modelPath,
+    modelName,
     error: installed && modelExists ? undefined : error,
   };
 }

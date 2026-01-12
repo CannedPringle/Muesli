@@ -30,9 +30,16 @@ export async function POST(request: NextRequest) {
     const settings = getAllSettings();
     const timezone = body.timezone || settings.defaultTimezone || 'UTC';
     
-    // Calculate entry date (local date in the user's timezone)
-    const now = new Date();
-    const entryDate = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+    // Use provided entry date or calculate from current time
+    let entryDate: string;
+    if (body.entryDate && /^\d{4}-\d{2}-\d{2}$/.test(body.entryDate)) {
+      // Use provided date if it's a valid YYYY-MM-DD format
+      entryDate = body.entryDate;
+    } else {
+      // Calculate entry date (local date in the user's timezone)
+      const now = new Date();
+      entryDate = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+    }
     
     // Generate ID
     const id = nanoid();

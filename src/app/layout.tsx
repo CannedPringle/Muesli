@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Whisper Journal",
-  description: "Local-first voice journaling with AI transcription",
+  title: "Muesli",
+  description: "Private AI journaling for macOS",
 };
 
 export default function RootLayout({

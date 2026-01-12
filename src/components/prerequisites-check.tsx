@@ -62,7 +62,7 @@ export function PrerequisitesCheckComponent({
           )}
         </CardTitle>
         <CardDescription>
-          Whisper Journal requires these tools to be installed on your Mac.
+          Muesli requires these tools to be installed on your Mac.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
