@@ -43,6 +43,7 @@ export interface GeneratedSections {
 // Database entry row
 export interface Entry {
   id: string;
+  title?: string;
   createdAt: string;
   updatedAt: string;
   timezone: string;

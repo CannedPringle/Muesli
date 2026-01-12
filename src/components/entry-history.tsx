@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { 
   FileText, 
@@ -15,7 +14,6 @@ import {
   MoreHorizontal,
   ExternalLink,
   FolderOpen,
-  Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

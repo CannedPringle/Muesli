@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { format } from 'date-fns';
+
 import { formatInTimeZone } from 'date-fns-tz';
 import { createEntry, getAllEntries, getAllSettings } from '@/lib/db';
 import { startRunner } from '@/lib/job-runner';

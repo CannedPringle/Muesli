@@ -12,12 +12,20 @@ interface UseEntryOptions {
   pollWhileProcessing?: boolean;
 }
 
+interface UpdateEntryData {
+  editedTranscript?: string;
+  promptAnswers?: PromptAnswers;
+  entryDate?: string;
+  action?: 'continue';
+  editedSections?: Record<string, string>;
+}
+
 interface UseEntryReturn {
   entry: EntryResponse | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  updateEntry: (data: { editedTranscript?: string; promptAnswers?: PromptAnswers; entryDate?: string; action?: 'continue' }) => Promise<void>;
+  updateEntry: (data: UpdateEntryData) => Promise<void>;
   cancelEntry: () => Promise<void>;
   isPolling: boolean;
 }
@@ -54,12 +62,7 @@ export function useEntry(entryId: string | null, options: UseEntryOptions = {}):
     setIsLoading(false);
   }, [fetchEntry]);
 
-  const updateEntry = useCallback(async (data: { 
-    editedTranscript?: string; 
-    promptAnswers?: PromptAnswers;
-    entryDate?: string;
-    action?: 'continue';
-  }) => {
+  const updateEntry = useCallback(async (data: UpdateEntryData) => {
     if (!entryId) return;
     
     try {
@@ -466,6 +469,174 @@ export function useOpenNote(): UseOpenNoteReturn {
 }
 
 // ============================================
+// useSearchEntries - Search entries with filters
+// ============================================
+
+export interface SearchFilters {
+  query?: string;
+  type?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}
+
+interface SearchResult {
+  entries: Entry[];
+  total: number;
+  hasMore: boolean;
+}
+
+interface UseSearchEntriesReturn {
+  results: SearchResult | null;
+  isLoading: boolean;
+  error: string | null;
+  search: (filters: SearchFilters) => Promise<void>;
+}
+
+export function useSearchEntries(): UseSearchEntriesReturn {
+  const [results, setResults] = useState<SearchResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const search = useCallback(async (filters: SearchFilters) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const params = new URLSearchParams();
+      if (filters.query) params.set('q', filters.query);
+      if (filters.type && filters.type !== 'all') params.set('type', filters.type);
+      if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      
+      const response = await fetch(`/api/entries/search?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to search entries');
+      }
+      
+      const data = await response.json();
+      setResults(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return {
+    results,
+    isLoading,
+    error,
+    search,
+  };
+}
+
+// ============================================
+// useEntryLinks - Manage entry relationships
+// ============================================
+
+interface EntryLinksData {
+  entryId: string;
+  linked: Entry[];
+  linkedBy: Entry[];
+}
+
+interface UseEntryLinksReturn {
+  links: EntryLinksData | null;
+  isLoading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+  addLink: (targetId: string, linkType?: 'related' | 'followup' | 'reference') => Promise<void>;
+  removeLink: (targetId: string) => Promise<void>;
+}
+
+export function useEntryLinks(entryId: string | null): UseEntryLinksReturn {
+  const [links, setLinks] = useState<EntryLinksData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLinks = useCallback(async () => {
+    if (!entryId) {
+      setLinks(null);
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/entries/${entryId}/links`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch entry links');
+      }
+      const data = await response.json();
+      setLinks(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [entryId]);
+
+  const addLink = useCallback(async (targetId: string, linkType: 'related' | 'followup' | 'reference' = 'related') => {
+    if (!entryId) return;
+    
+    try {
+      const response = await fetch(`/api/entries/${entryId}/links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId, linkType }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add link');
+      }
+      
+      const data = await response.json();
+      setLinks(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      throw err;
+    }
+  }, [entryId]);
+
+  const removeLink = useCallback(async (targetId: string) => {
+    if (!entryId) return;
+    
+    try {
+      const response = await fetch(`/api/entries/${entryId}/links`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to remove link');
+      }
+      
+      const data = await response.json();
+      setLinks(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      throw err;
+    }
+  }, [entryId]);
+
+  useEffect(() => {
+    fetchLinks();
+  }, [fetchLinks]);
+
+  return {
+    links,
+    isLoading,
+    error,
+    refetch: fetchLinks,
+    addLink,
+    removeLink,
+  };
+}
+
+// ============================================
 // useWhisperModels - Check installed Whisper models
 // ============================================
 
@@ -518,6 +689,82 @@ export function useWhisperModels(): UseWhisperModelsReturn {
 
   return {
     data,
+    isLoading,
+    error,
+    refetch: fetchModels,
+  };
+}
+
+// ============================================
+// useOllamaModels - Fetch available Ollama models
+// ============================================
+
+export interface OllamaModelInfo {
+  name: string;
+  size?: number;
+  modified_at?: string;
+}
+
+interface UseOllamaModelsReturn {
+  models: OllamaModelInfo[];
+  isLoading: boolean;
+  error: string | null;
+  refetch: (baseUrl?: string) => Promise<void>;
+}
+
+export function useOllamaModels(initialBaseUrl: string): UseOllamaModelsReturn {
+  const [models, setModels] = useState<OllamaModelInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const baseUrlRef = useRef(initialBaseUrl);
+
+  const fetchModels = useCallback(async (baseUrl?: string) => {
+    const url = baseUrl || baseUrlRef.current;
+    if (baseUrl) {
+      baseUrlRef.current = baseUrl;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${url}/api/tags`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to connect to Ollama');
+      }
+      
+      const data = await response.json();
+      const modelList: OllamaModelInfo[] = (data.models || []).map((m: { name: string; size?: number; modified_at?: string }) => ({
+        name: m.name,
+        size: m.size,
+        modified_at: m.modified_at,
+      }));
+      
+      setModels(modelList);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message.includes('timeout') || message.includes('abort')) {
+        setError(`Cannot connect to Ollama at ${url}. Is it running?`);
+      } else {
+        setError(`Cannot connect to Ollama: ${message}`);
+      }
+      setModels([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchModels(initialBaseUrl);
+  }, [initialBaseUrl, fetchModels]);
+
+  return {
+    models,
     isLoading,
     error,
     refetch: fetchModels,

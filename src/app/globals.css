@@ -120,6 +120,127 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-stone-200 selection:text-stone-900 dark:selection:bg-stone-700 dark:selection:text-stone-100;
   }
+}
+
+/* Custom Utilities for Muesli App */
+@utility text-balance {
+  text-wrap: balance;
+}
+
+@utility prose-stone {
+  --tw-prose-body: var(--color-stone-700);
+  --tw-prose-headings: var(--color-stone-900);
+  --tw-prose-lead: var(--color-stone-600);
+  --tw-prose-links: var(--color-stone-900);
+  --tw-prose-bold: var(--color-stone-900);
+  --tw-prose-counters: var(--color-stone-500);
+  --tw-prose-bullets: var(--color-stone-300);
+  --tw-prose-hr: var(--color-stone-200);
+  --tw-prose-quotes: var(--color-stone-900);
+  --tw-prose-quote-borders: var(--color-stone-200);
+  --tw-prose-captions: var(--color-stone-500);
+  --tw-prose-code: var(--color-stone-900);
+  --tw-prose-pre-code: var(--color-stone-200);
+  --tw-prose-pre-bg: var(--color-stone-800);
+  --tw-prose-th-borders: var(--color-stone-300);
+  --tw-prose-td-borders: var(--color-stone-200);
+}
+
+@utility animate-accordion-down {
+  animation: accordion-down 0.2s ease-out;
+}
+
+@utility animate-accordion-up {
+  animation: accordion-up 0.2s ease-out;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/* ============================================================================
+   Premium Typography Enhancements
+   Inspired by Bear, Craft, and Reflect note-taking apps
+   ============================================================================ */
+
+/* Label paragraphs: extra top margin when strong/bold is at the start
+   This creates visual grouping for structured content like:
+   **Startup:** content here
+   **Money:** content here */
+.prose p:has(> strong:first-child) {
+  margin-top: 1.25rem;
+}
+
+/* Bullet styling polish - slightly muted markers */
+.prose ul > li::marker {
+  color: var(--color-stone-400);
+}
+.dark .prose ul > li::marker {
+  color: var(--color-stone-500);
+}
+
+/* Ordered list markers */
+.prose ol > li::marker {
+  color: var(--color-stone-500);
+  font-weight: 500;
+}
+.dark .prose ol > li::marker {
+  color: var(--color-stone-400);
+}
+
+/* Nested list spacing - tighter for scannability */
+.prose ul ul,
+.prose ol ol,
+.prose ul ol,
+.prose ol ul {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+/* Inline code styling - subtle background, no backtick artifacts */
+.prose code:not(pre code) {
+  background-color: var(--color-stone-100);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  font-weight: 400;
+}
+.prose code:not(pre code)::before,
+.prose code:not(pre code)::after {
+  content: none;
+}
+.dark .prose code:not(pre code) {
+  background-color: var(--color-stone-800);
+}
+
+/* Details/summary when opened - add subtle separator */
+details[open] > summary {
+  border-bottom: 1px solid var(--color-stone-200);
+  margin-bottom: 0.75rem;
+}
+.dark details[open] > summary {
+  border-bottom-color: var(--color-stone-700);
+}
+
+/* First h2 in a section shouldn't have top border (it's redundant) */
+.prose > h2:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }

@@ -1,36 +1,33 @@
 'use client';
 
-import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Settings, BookOpen, AlertCircle, Plus } from 'lucide-react';
+import { AlertCircle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 import { Skeleton } from '@/components/ui/skeleton';
-import { EntryWizard } from '@/components/entry-wizard';
-import { EntryHistory } from '@/components/entry-history';
+import { EntryBrowser } from '@/components/entry-browser';
 import { PrerequisitesCheckComponent } from '@/components/prerequisites-check';
-import { ThemeToggle } from '@/components/theme-toggle';
+
 import { usePrerequisites, useSettings } from '@/hooks/use-entry';
 import { Toaster } from '@/components/ui/sonner';
-import type { Entry } from '@/types';
 
 function LoadingSkeleton() {
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <div className="text-center space-y-2">
-            <Skeleton className="h-8 w-48 mx-auto" />
-            <Skeleton className="h-4 w-64 mx-auto" />
-          </div>
-          <div className="space-y-4">
-            <Skeleton className="h-32 w-full rounded-lg" />
-            <Skeleton className="h-32 w-full rounded-lg" />
-            <Skeleton className="h-32 w-full rounded-lg" />
-          </div>
+    <div className="flex h-screen w-full bg-stone-50/50 dark:bg-stone-950">
+      <div className="w-72 border-r bg-stone-50/50 p-4 dark:bg-stone-900/50 dark:border-stone-800">
+        <Skeleton className="h-8 w-3/4 rounded-md mb-8 bg-stone-200 dark:bg-stone-800" />
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full rounded-md bg-stone-200 dark:bg-stone-800" />
+          <Skeleton className="h-12 w-full rounded-md bg-stone-200 dark:bg-stone-800" />
+          <Skeleton className="h-12 w-full rounded-md bg-stone-200 dark:bg-stone-800" />
         </div>
-        <div>
-          <Skeleton className="h-[500px] w-full rounded-lg" />
+      </div>
+      <div className="flex-1 p-12">
+        <Skeleton className="h-12 w-1/3 mb-8 bg-stone-200 dark:bg-stone-800" />
+        <div className="space-y-4 max-w-2xl">
+          <Skeleton className="h-4 w-full bg-stone-200 dark:bg-stone-800" />
+          <Skeleton className="h-4 w-5/6 bg-stone-200 dark:bg-stone-800" />
+          <Skeleton className="h-4 w-4/6 bg-stone-200 dark:bg-stone-800" />
         </div>
       </div>
     </div>
@@ -40,103 +37,69 @@ function LoadingSkeleton() {
 export default function Home() {
   const { prerequisites, isLoading: prereqLoading, error: prereqError, refetch: refetchPrereq } = usePrerequisites();
   const { settings, isLoading: settingsLoading } = useSettings();
-  const [historyKey, setHistoryKey] = useState(0);
 
   const isLoading = prereqLoading || settingsLoading;
   const needsSetup = !prerequisites?.allReady || !settings?.vaultPath;
 
-  const handleEntryComplete = useCallback(() => {
-    // Refresh the history when an entry is completed
-    setHistoryKey((k) => k + 1);
-  }, []);
-
-  const handleSelectEntry = useCallback((entry: Entry) => {
-    // For now, we could navigate to a detail view or resume an in-progress entry
-    // This is a placeholder for future enhancement
-    console.log('Selected entry:', entry.id);
-  }, []);
+  if (isLoading) return <LoadingSkeleton />;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Toaster />
+    <div className="h-screen w-full bg-background flex overflow-hidden font-sans antialiased text-stone-900 dark:text-stone-100">
+      <Toaster position="bottom-right" theme="system" />
       
-      {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-6 w-6" />
-            <h1 className="text-xl font-bold">Muesli</h1>
-          </div>
-          <div className="flex items-center gap-1">
-            <ThemeToggle />
-            <Link href="/settings">
-              <Button variant="ghost" size="icon">
-                <Settings className="h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      {needsSetup ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-stone-50 dark:bg-stone-950">
+          <div className="max-w-md w-full space-y-8">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-stone-100 dark:bg-stone-900 mb-4">
+                <Sparkles className="h-8 w-8 text-stone-900 dark:text-stone-100" />
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                Welcome to Muesli
+              </h1>
+              <p className="text-stone-500 dark:text-stone-400">
+                Your local-first AI thinking partner.
+              </p>
+            </div>
 
-      {/* Main content */}
-      <main className="container mx-auto px-4 py-8 flex-1">
-        {isLoading ? (
-          <LoadingSkeleton />
-        ) : needsSetup ? (
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* Prerequisites check */}
-            {!prerequisites?.allReady && (
-              <PrerequisitesCheckComponent
-                prerequisites={prerequisites}
-                isLoading={prereqLoading}
-                error={prereqError}
-                onRefresh={refetchPrereq}
-              />
-            )}
+            <div className="space-y-6">
+              {!prerequisites?.allReady && (
+                <PrerequisitesCheckComponent
+                  prerequisites={prerequisites}
+                  isLoading={prereqLoading}
+                  error={prereqError}
+                  onRefresh={refetchPrereq}
+                />
+              )}
 
-            {/* Vault path warning */}
-            {prerequisites?.allReady && !settings?.vaultPath && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Vault Path Required</AlertTitle>
-                <AlertDescription>
-                  Please configure your Obsidian vault path in settings before creating entries.
-                  <div className="mt-2">
+              {prerequisites?.allReady && !settings?.vaultPath && (
+                <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 bg-amber-50 rounded-lg text-amber-600 dark:bg-amber-950/30 dark:text-amber-500">
+                      <AlertCircle className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-medium">Vault Setup Required</h3>
+                      <p className="text-sm text-stone-500 dark:text-stone-400">
+                        Please configure your Obsidian vault path to start creating structured journals.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex justify-end">
                     <Link href="/settings">
-                      <Button size="sm">Open Settings</Button>
+                      <Button className="bg-stone-900 text-white hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200">
+                        Open Settings
+                      </Button>
                     </Link>
                   </div>
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-        ) : (
-          <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-              {/* Entry Wizard - Takes 3/5 of the space */}
-              <div className="lg:col-span-3">
-                <EntryWizard onComplete={handleEntryComplete} />
-              </div>
-              
-              {/* Entry History - Takes 2/5 of the space */}
-              <div className="lg:col-span-2">
-                <EntryHistory 
-                  key={historyKey}
-                  onSelectEntry={handleSelectEntry}
-                  limit={20}
-                />
-              </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t mt-auto">
-        <div className="container mx-auto px-4 py-4 text-center text-sm text-muted-foreground">
-          Muesli — Private AI journaling for macOS
         </div>
-      </footer>
+      ) : (
+        <EntryBrowser />
+      )}
     </div>
   );
 }

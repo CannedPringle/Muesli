@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AudioRecorder } from '@/components/audio-recorder';
 import { AudioUpload } from '@/components/audio-upload';
@@ -13,6 +12,7 @@ import { TranscriptEditor } from '@/components/transcript-editor';
 import { PromptForm } from '@/components/prompt-form';
 import { NoteActions } from '@/components/note-actions';
 import { DatePicker } from '@/components/ui/date-picker';
+import { ChevronLeft } from 'lucide-react';
 import { 
   useCreateEntry, 
   useUploadAudio, 
@@ -41,40 +41,55 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
 
   // Sync entryDate from entry when it's loaded
   useEffect(() => {
-    if (entry?.entryDate) {
-      setEntryDate(entry.entryDate);
-    }
-  }, [entry?.entryDate]);
+    // Check if we need to update to avoid infinite loop
+    const syncDate = () => {
+      if (entry?.entryDate && entryDate !== entry.entryDate) {
+        setEntryDate(entry.entryDate);
+      }
+    };
+    
+    syncDate();
+  }, [entry?.entryDate, entryDate]);
 
   // Watch entry stage and update wizard step accordingly
   useEffect(() => {
     if (!entry) return;
 
-    switch (entry.stage) {
-      case 'queued':
-      case 'normalizing':
-      case 'transcribing':
-      case 'generating':
-      case 'writing':
-      case 'cancel_requested':
-        setStep('processing');
-        break;
-      case 'awaiting_review':
-        setStep('review');
-        break;
-      case 'awaiting_prompts':
-        setStep('prompts');
-        break;
-      case 'completed':
-        setStep('complete');
-        break;
-      case 'failed':
-      case 'cancelled':
-        // Stay on processing to show error
-        setStep('processing');
-        break;
-    }
-  }, [entry?.stage]);
+    const syncStep = () => {
+      setStep((currentStep) => {
+        let nextStep = currentStep;
+
+        switch (entry.stage) {
+          case 'queued':
+          case 'normalizing':
+          case 'transcribing':
+          case 'generating':
+          case 'writing':
+          case 'cancel_requested':
+            nextStep = 'processing';
+            break;
+          case 'awaiting_review':
+            nextStep = 'review';
+            break;
+          case 'awaiting_prompts':
+            nextStep = 'prompts';
+            break;
+          case 'completed':
+            nextStep = 'complete';
+            break;
+          case 'failed':
+          case 'cancelled':
+            // Stay on processing to show error
+            nextStep = 'processing';
+            break;
+        }
+        
+        return nextStep !== currentStep ? nextStep : currentStep;
+      });
+    };
+    
+    syncStep();
+  }, [entry?.stage, entry]); // Added entry as dependency
 
   const handleSelectType = () => {
     setStep('record');
@@ -150,169 +165,202 @@ export function EntryWizard({ onComplete }: EntryWizardProps) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Step: Select Entry Type */}
-      {step === 'select-type' && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">New Journal Entry</h2>
-            <p className="text-muted-foreground">
-              Choose the type of entry you want to create
-            </p>
-          </div>
-          
-          <EntryTypeSelector
-            value={entryType}
-            onChange={setEntryType}
-          />
-
-          <DatePicker
-            value={entryDate}
-            onChange={setEntryDate}
-            label="Entry Date"
-          />
-          
-          <div className="flex justify-center">
-            <Button size="lg" onClick={handleSelectType}>
-              Continue
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step: Record/Upload Audio */}
-      {step === 'record' && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">
-              {entryType === 'brain-dump' && 'Brain Dump'}
-              {entryType === 'daily-reflection' && 'Daily Reflection'}
-              {entryType === 'quick-note' && 'Quick Note'}
-            </h2>
-            <p className="text-muted-foreground">
-              Record your thoughts or upload an existing audio file
-            </p>
-          </div>
-
-          <Tabs value={audioSource} onValueChange={(v) => setAudioSource(v as 'record' | 'upload')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="record">Record</TabsTrigger>
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-            </TabsList>
-            <TabsContent value="record" className="mt-4">
-              <AudioRecorder
-                onRecordingComplete={handleAudioReady}
-                disabled={isCreating || isUploading}
+    <div className="h-full w-full overflow-y-auto bg-stone-50/30 dark:bg-stone-950/30 p-8">
+      <div className="max-w-3xl mx-auto min-h-full flex flex-col justify-center">
+        {/* Step: Select Entry Type */}
+        {step === 'select-type' && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="text-center space-y-2">
+              <h2 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                New Journal Entry
+              </h2>
+              <p className="text-lg text-stone-500 dark:text-stone-400">
+                What kind of thinking do you want to do today?
+              </p>
+            </div>
+            
+            <div className="py-4">
+              <EntryTypeSelector
+                value={entryType}
+                onChange={setEntryType}
               />
-            </TabsContent>
-            <TabsContent value="upload" className="mt-4">
-              <AudioUpload
-                onFileSelected={handleAudioReady}
-                disabled={isCreating || isUploading}
+            </div>
+
+            <div className="max-w-xs mx-auto space-y-4">
+              <DatePicker
+                value={entryDate}
+                onChange={setEntryDate}
+                label="Entry Date"
               />
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex justify-start">
-            <Button variant="ghost" onClick={() => setStep('select-type')}>
-              Back
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step: Processing */}
-      {step === 'processing' && entry && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">Processing</h2>
-            <p className="text-muted-foreground">
-              Your audio is being transcribed and processed
-            </p>
-          </div>
-
-          <JobProgress
-            stage={entry.stage}
-            stageMessage={entry.stageMessage}
-            errorMessage={entry.errorMessage}
-            onCancel={handleCancel}
-            canCancel={!['completed', 'failed', 'cancelled', 'cancel_requested'].includes(entry.stage)}
-          />
-
-          {(entry.stage === 'failed' || entry.stage === 'cancelled') && (
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" onClick={handleNewEntry}>
-                Start Over
+              
+              <Button size="lg" className="w-full h-12 text-base" onClick={handleSelectType}>
+                Continue
               </Button>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Step: Review Transcript */}
-      {step === 'review' && entry && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">Review Transcript</h2>
-            <p className="text-muted-foreground">
-              Review and edit the transcription if needed
-            </p>
           </div>
+        )}
 
-          <DatePicker
-            value={entryDate}
-            onChange={handleDateChange}
-            label="Entry Date"
-          />
+        {/* Step: Record/Upload Audio */}
+        {step === 'record' && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="flex items-center mb-6">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="absolute left-8 top-8 text-stone-500"
+                onClick={() => setStep('select-type')}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+            </div>
 
-          <TranscriptEditor
-            transcript={entry.rawTranscript || ''}
-            editedTranscript={entry.editedTranscript}
-            onSave={handleTranscriptSave}
-            onContinue={handleTranscriptContinue}
-          />
-        </div>
-      )}
+            <div className="text-center space-y-2">
+              <h2 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                {entryType === 'brain-dump' && 'Brain Dump'}
+                {entryType === 'daily-reflection' && 'Daily Reflection'}
+                {entryType === 'quick-note' && 'Quick Note'}
+              </h2>
+              <p className="text-stone-500 dark:text-stone-400">
+                Capture your raw thoughts. We&apos;ll structure them for you.
+              </p>
+            </div>
 
-      {/* Step: Edit Prompts */}
-      {step === 'prompts' && entry && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">Review Prompts</h2>
-            <p className="text-muted-foreground">
-              Review and edit the extracted content
-            </p>
+            <div className="max-w-md mx-auto bg-white dark:bg-stone-900 rounded-2xl p-6 shadow-sm border border-stone-200 dark:border-stone-800">
+              <Tabs value={audioSource} onValueChange={(v) => setAudioSource(v as 'record' | 'upload')}>
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="record">Record Audio</TabsTrigger>
+                  <TabsTrigger value="upload">Upload File</TabsTrigger>
+                </TabsList>
+                <TabsContent value="record" className="mt-0">
+                  <AudioRecorder
+                    onRecordingComplete={handleAudioReady}
+                    disabled={isCreating || isUploading}
+                  />
+                </TabsContent>
+                <TabsContent value="upload" className="mt-0">
+                  <AudioUpload
+                    onFileSelected={handleAudioReady}
+                    disabled={isCreating || isUploading}
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
+        )}
 
-          <PromptForm
-            promptAnswers={entry.promptAnswers ? JSON.parse(entry.promptAnswers) : {}}
-            onSave={handlePromptsSave}
-            onContinue={handlePromptsContinue}
-          />
-        </div>
-      )}
+        {/* Step: Processing */}
+        {step === 'processing' && entry && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                Processing Your Thoughts
+              </h2>
+              <p className="text-stone-500 dark:text-stone-400">
+                Transcribing and structuring your entry...
+              </p>
+            </div>
 
-      {/* Step: Complete */}
-      {step === 'complete' && entry && (
-        <div className="space-y-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">Complete!</h2>
-            <p className="text-muted-foreground">
-              Your journal entry has been created
-            </p>
+            <div className="max-w-xl mx-auto">
+              <JobProgress
+                stage={entry.stage}
+                stageMessage={entry.stageMessage}
+                errorMessage={entry.errorMessage}
+                onCancel={handleCancel}
+                canCancel={!['completed', 'failed', 'cancelled', 'cancel_requested'].includes(entry.stage)}
+              />
+            </div>
+
+            {(entry.stage === 'failed' || entry.stage === 'cancelled') && (
+              <div className="flex justify-center pt-4">
+                <Button variant="outline" onClick={handleNewEntry}>
+                  Start Over
+                </Button>
+              </div>
+            )}
           </div>
+        )}
 
-          <NoteActions
-            noteContent={entry.noteContent}
-            noteRelpath={entry.noteRelpath}
-            onOpenInObsidian={handleOpenInObsidian}
-            onRevealInFinder={handleRevealInFinder}
-            onNewEntry={handleNewEntry}
-            isOpening={isOpening}
-            hasExternalEdits={entry.hasExternalEdits}
-          />
-        </div>
-      )}
+        {/* Step: Review Transcript */}
+        {step === 'review' && entry && (
+          <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-300">
+            <div className="text-center flex-shrink-0">
+              <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Review Transcript</h2>
+              <p className="text-stone-500 dark:text-stone-400 text-sm">
+                Make any necessary corrections before we generate the journal entry.
+              </p>
+            </div>
+
+            <div className="flex justify-center flex-shrink-0">
+              <DatePicker
+                value={entryDate}
+                onChange={handleDateChange}
+                label="Entry Date"
+              />
+            </div>
+
+            <div className="flex-1 min-h-0 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 shadow-sm overflow-hidden">
+              <TranscriptEditor
+                transcript={entry.rawTranscript || ''}
+                editedTranscript={entry.editedTranscript}
+                onSave={handleTranscriptSave}
+                onContinue={handleTranscriptContinue}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step: Edit Prompts */}
+        {step === 'prompts' && entry && (
+          <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-300">
+             <div className="text-center flex-shrink-0">
+              <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-100">Review Key Points</h2>
+              <p className="text-stone-500 dark:text-stone-400 text-sm">
+                Verify the extracted information.
+              </p>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <PromptForm
+                promptAnswers={entry.promptAnswers ? JSON.parse(entry.promptAnswers) : {}}
+                onSave={handlePromptsSave}
+                onContinue={handlePromptsContinue}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step: Complete */}
+        {step === 'complete' && entry && (
+          <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500 text-center max-w-lg mx-auto">
+            <div className="space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mb-4">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                Entry Created!
+              </h2>
+              <p className="text-stone-500 dark:text-stone-400 text-lg">
+                Your thoughts have been captured and structured in your vault.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-stone-900 p-6 rounded-xl border border-stone-200 dark:border-stone-800 shadow-sm text-left">
+              <NoteActions
+                noteContent={entry.noteContent}
+                noteRelpath={entry.noteRelpath}
+                onOpenInObsidian={handleOpenInObsidian}
+                onRevealInFinder={handleRevealInFinder}
+                onNewEntry={handleNewEntry}
+                isOpening={isOpening}
+                hasExternalEdits={entry.hasExternalEdits}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

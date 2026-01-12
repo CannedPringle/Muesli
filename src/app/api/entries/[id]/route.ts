@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntry, updateEntry, deleteEntry, getAllSettings, resolveNotePath } from '@/lib/db';
-import { hasExternalEdits, readNote } from '@/lib/services/vault';
+import { getEntry, updateEntry, deleteEntry } from '@/lib/db';
+import { hasExternalEdits, readNote, updateNoteContent } from '@/lib/services/vault';
 import { continueJobAfterReview, continueJobAfterPrompts } from '@/lib/job-runner';
 import { calculateOverallProgress } from '@/types';
 import type { PromptAnswers } from '@/types';
@@ -95,6 +95,21 @@ export async function PATCH(
     // Apply updates
     if (Object.keys(updates).length > 0) {
       updateEntry(id, updates);
+    }
+    
+    // Handle section edits for completed entries
+    if (body.editedSections && typeof body.editedSections === 'object' && entry.noteRelpath) {
+      try {
+        const result = await updateNoteContent(entry, body.editedSections as Record<string, string>);
+        // Update the noteMtime to track this edit
+        updateEntry(id, { noteMtime: result.mtime });
+      } catch (err) {
+        console.error('Error updating note content:', err);
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : 'Failed to update note content' },
+          { status: 500 }
+        );
+      }
     }
     
     // Handle action to continue the job

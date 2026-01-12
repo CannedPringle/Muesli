@@ -12,7 +12,7 @@ import { normalizeAudio, deleteAudioFile } from '@/lib/services/audio';
 import { transcribe } from '@/lib/services/transcribe';
 import { generateJournal } from '@/lib/services/llm';
 import { writeNote } from '@/lib/services/vault';
-import type { Entry, JobStage, PromptAnswers, GeneratedSections } from '@/types';
+import type { JobStage, PromptAnswers, GeneratedSections } from '@/types';
 
 // Runner instance ID for locking
 const RUNNER_ID = `runner-${nanoid(8)}`;

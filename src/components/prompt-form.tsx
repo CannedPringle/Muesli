@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import type { PromptAnswers, PromptAnswer } from '@/types';
+import type { PromptAnswers } from '@/types';
 
 interface PromptFormProps {
   promptAnswers: PromptAnswers;

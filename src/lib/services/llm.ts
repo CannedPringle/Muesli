@@ -70,7 +70,7 @@ Rules:
 - Do NOT invent facts.
 - If something is unclear, state it as unknown.
 - Do NOT add advice unless explicitly requested.
-- Use the exact section headings below.
+- Use the exact section headings below (with ## markdown syntax).
 - Keep language concise and concrete.
 - Prefer bullet points over paragraphs.
 - Quote ${name}'s own words when important.
@@ -80,26 +80,26 @@ You will be given:
 
 ---
 
-Produce exactly the following sections in this order:
+Produce exactly the following sections in this order, using ## for each section heading:
 
 ---
 
-## ${name} – Daily Strategic Journal
+# ${name} – Daily Strategic Journal
 
-### 0) ${name}'s TL;DR (First-Person)
+## TL;DR
 Write a 5–8 sentence first-person summary as if ${name} wrote it himself.  
 It should include what happened, how he felt, and what he's thinking about.  
 Do not add new facts.
 
 ---
 
-### 1) Today in 6 Bullets (Objective)
+## Today in 6 Bullets
 List the six most important factual events or actions from today.  
 No emotions. No interpretation.
 
 ---
 
-### 2) What Actually Mattered
+## What Actually Mattered
 From everything today, list what had real long-term leverage on:
 - ${name}'s startup
 - Money
@@ -110,7 +110,7 @@ Only include items that compound.
 
 ---
 
-### 3) Distractions vs Leverage
+## Distractions vs Leverage
 
 **Leverage**
 - Actions that move ${name} toward building a real company, financial independence, or personal strength.
@@ -120,26 +120,26 @@ Only include items that compound.
 
 ---
 
-### 4) Decisions Made (and Avoided)
+## Decisions Made (and Avoided)
 List:
 - Any real decisions ${name} made today.
 - Any important decisions ${name} avoided or postponed.
 
 ---
 
-### 5) Friction Points
+## Friction Points
 What slowed ${name} down today?  
 List blockers, confusion, emotional resistance, or external obstacles.
 
 ---
 
-### 6) Emotional State (Brief)
+## Emotional State
 Summarize ${name}'s emotional and energy state in 2–4 sentences.  
 Do not psychoanalyze.
 
 ---
 
-### 7) Money & Leverage
+## Money & Leverage
 List:
 - Money earned, spent, or discussed.
 - Progress or setbacks toward:
@@ -151,31 +151,31 @@ If not mentioned, say "Not mentioned."
 
 ---
 
-### 8) If Today Repeats for 90 Days…
+## If Today Repeats for 90 Days
 Predict what ${name}'s life would look like in 90 days if he lived exactly like today.  
 Base this only on today's actions and patterns.
 
 ---
 
-### 8b) If I Keep Living Like This…
+## Identity Trajectory
 Write a 4–8 sentence first-person reflection describing who ${name} is becoming if he continues this pattern long-term.  
 Focus on identity, lifestyle, and trajectory.  
 Do not invent facts — extrapolate only from today's actions and patterns.
 
 ---
 
-### 9) Tomorrow: 3 Non-Negotiables
+## Tomorrow: 3 Non-Negotiables
 From all information, select the three actions that would make tomorrow a win.  
 These must be high-leverage, not a long to-do list.
 
 ---
 
-### 10) Open Loops
+## Open Loops
 List unresolved tasks, follow-ups, risks, or pending decisions.
 
 ---
 
-### 11) Identity Check
+## Identity Check
 Is today aligned with the man ${name} is trying to become:
 - disciplined  
 - founder  
@@ -185,7 +185,7 @@ Answer in 1–2 sentences.
 
 ---
 
-### 12) Tags
+## Tags
 Output 3–8 tags starting with \`#\` based on the content (e.g. \`#startup\`, \`#money\`, \`#health\`, \`#distraction\`, \`#leverage\`, \`#relationships\`).
 
 ---
@@ -349,7 +349,7 @@ export async function checkOllama(): Promise<{
         ? undefined 
         : `No compatible model found. Install with: ollama pull gpt-oss:20b`,
     };
-  } catch (err) {
+  } catch {
     return {
       running: false,
       modelAvailable: false,

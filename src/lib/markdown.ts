@@ -1,9 +1,5 @@
 import type { ParsedSection, ParseError, ParseResult } from '@/types';
 
-// Marker format: <!-- WHISPER_JOURNAL:SECTION_NAME:START [flags] -->
-const MARKER_START_REGEX = /<!-- WHISPER_JOURNAL:([A-Z][A-Z0-9_]*):START(?:\s+([\w\s]+))? -->/g;
-const MARKER_END_REGEX = /<!-- WHISPER_JOURNAL:([A-Z][A-Z0-9_]*):END -->/g;
-
 // Valid section names
 export const SECTION_NAMES = [
   'AUDIO',

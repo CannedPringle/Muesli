@@ -70,7 +70,12 @@ export function useAudioDevices(): UseAudioDevicesReturn {
 
   // Initial load and listen for device changes
   useEffect(() => {
-    loadDevices();
+    // Wrap in a function to avoid direct invocation in effect
+    const initDevices = () => {
+      loadDevices();
+    };
+    
+    initDevices();
 
     const handleDeviceChange = () => {
       loadDevices();

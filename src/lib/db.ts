@@ -35,6 +35,7 @@ db.exec(`
     
     -- Entry metadata
     entry_type TEXT CHECK(entry_type IN ('brain-dump', 'daily-reflection', 'quick-note')) NOT NULL,
+    title TEXT,
     
     -- Job state
     stage TEXT CHECK(stage IN (
@@ -80,6 +81,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_entries_entry_date ON entries(entry_date);
   CREATE INDEX IF NOT EXISTS idx_entries_stage ON entries(stage);
   CREATE INDEX IF NOT EXISTS idx_entries_type ON entries(entry_type);
+  
+  -- Entry links (for related entries)
+  CREATE TABLE IF NOT EXISTS entry_links (
+    source_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    link_type TEXT NOT NULL DEFAULT 'related',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (source_id, target_id)
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_entry_links_source ON entry_links(source_id);
+  CREATE INDEX IF NOT EXISTS idx_entry_links_target ON entry_links(target_id);
 `);
 
 // Create trigger for auto-updating updated_at
@@ -91,6 +104,57 @@ db.exec(`
     WHERE id = NEW.id;
   END;
 `);
+
+// Full-text search table for entries
+db.exec(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
+    id,
+    raw_transcript,
+    edited_transcript,
+    generated_sections,
+    content='entries',
+    content_rowid='rowid'
+  );
+`);
+
+// Triggers to keep FTS in sync
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS entries_fts_insert AFTER INSERT ON entries BEGIN
+    INSERT INTO entries_fts(rowid, id, raw_transcript, edited_transcript, generated_sections)
+    VALUES (NEW.rowid, NEW.id, NEW.raw_transcript, NEW.edited_transcript, NEW.generated_sections);
+  END;
+`);
+
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS entries_fts_delete AFTER DELETE ON entries BEGIN
+    INSERT INTO entries_fts(entries_fts, rowid, id, raw_transcript, edited_transcript, generated_sections)
+    VALUES ('delete', OLD.rowid, OLD.id, OLD.raw_transcript, OLD.edited_transcript, OLD.generated_sections);
+  END;
+`);
+
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS entries_fts_update AFTER UPDATE ON entries BEGIN
+    INSERT INTO entries_fts(entries_fts, rowid, id, raw_transcript, edited_transcript, generated_sections)
+    VALUES ('delete', OLD.rowid, OLD.id, OLD.raw_transcript, OLD.edited_transcript, OLD.generated_sections);
+    INSERT INTO entries_fts(rowid, id, raw_transcript, edited_transcript, generated_sections)
+    VALUES (NEW.rowid, NEW.id, NEW.raw_transcript, NEW.edited_transcript, NEW.generated_sections);
+  END;
+`);
+
+// Rebuild FTS index for existing entries (runs once if needed)
+try {
+  const ftsCount = db.prepare('SELECT COUNT(*) as count FROM entries_fts').get() as { count: number };
+  const entriesCount = db.prepare('SELECT COUNT(*) as count FROM entries').get() as { count: number };
+  
+  if (ftsCount.count < entriesCount.count) {
+    // Rebuild FTS index
+    db.exec(`
+      INSERT INTO entries_fts(entries_fts) VALUES('rebuild');
+    `);
+  }
+} catch {
+  // FTS rebuild failed, ignore (may happen on first run)
+}
 
 // Insert default settings if not present
 const defaultSettings: [SettingKey, string][] = [
@@ -120,6 +184,7 @@ function rowToEntry(row: Record<string, unknown>): Entry {
     timezone: row.timezone as string,
     entryDate: row.entry_date as string,
     entryType: row.entry_type as EntryType,
+    title: row.title as string | undefined,
     stage: row.stage as JobStage,
     stageMessage: row.stage_message as string | null,
     errorMessage: row.error_message as string | null,
@@ -148,13 +213,14 @@ export function createEntry(data: {
   entryType: EntryType;
   timezone: string;
   entryDate: string;
+  title?: string;
 }): Entry {
   const stmt = db.prepare(`
-    INSERT INTO entries (id, entry_type, timezone, entry_date)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO entries (id, entry_type, timezone, entry_date, title)
+    VALUES (?, ?, ?, ?, ?)
   `);
   
-  stmt.run(data.id, data.entryType, data.timezone, data.entryDate);
+  stmt.run(data.id, data.entryType, data.timezone, data.entryDate, data.title);
   return getEntry(data.id)!;
 }
 
@@ -187,6 +253,7 @@ export function updateEntry(
     stage: JobStage;
     stageMessage: string | null;
     errorMessage: string | null;
+    title: string | null;
     lockedBy: string | null;
     lockedAt: string | null;
     heartbeatAt: string | null;
@@ -210,6 +277,7 @@ export function updateEntry(
     stage: 'stage',
     stageMessage: 'stage_message',
     errorMessage: 'error_message',
+    title: 'title',
     lockedBy: 'locked_by',
     lockedAt: 'locked_at',
     heartbeatAt: 'heartbeat_at',
@@ -268,6 +336,100 @@ export function getQueuedEntries(): Entry[] {
   );
   const rows = stmt.all() as Record<string, unknown>[];
   return rows.map(rowToEntry);
+}
+
+// Search entries using full-text search
+export interface SearchOptions {
+  query?: string;
+  entryType?: EntryType;
+  stage?: JobStage | 'active' | 'done' | 'failed';
+  fromDate?: string;  // YYYY-MM-DD
+  toDate?: string;    // YYYY-MM-DD
+  limit?: number;
+  offset?: number;
+}
+
+export interface SearchResult {
+  entries: Entry[];
+  total: number;
+  hasMore: boolean;
+}
+
+export function searchEntries(options: SearchOptions): SearchResult {
+  const { 
+    query, 
+    entryType, 
+    stage, 
+    fromDate, 
+    toDate, 
+    limit = 50, 
+    offset = 0 
+  } = options;
+  
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  
+  // Full-text search
+  if (query && query.trim()) {
+    // Use FTS5 match with wildcard
+    const searchTerm = query.trim().split(/\s+/).map(t => `"${t}"*`).join(' ');
+    conditions.push(`e.id IN (SELECT id FROM entries_fts WHERE entries_fts MATCH ?)`);
+    params.push(searchTerm);
+  }
+  
+  // Entry type filter
+  if (entryType) {
+    conditions.push('e.entry_type = ?');
+    params.push(entryType);
+  }
+  
+  // Stage filter
+  if (stage) {
+    if (stage === 'active') {
+      conditions.push(`e.stage NOT IN ('completed', 'failed', 'cancelled')`);
+    } else if (stage === 'done') {
+      conditions.push(`e.stage = 'completed'`);
+    } else if (stage === 'failed') {
+      conditions.push(`e.stage IN ('failed', 'cancelled')`);
+    } else {
+      conditions.push('e.stage = ?');
+      params.push(stage);
+    }
+  }
+  
+  // Date range filter (on entry_date)
+  if (fromDate) {
+    conditions.push('e.entry_date >= ?');
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push('e.entry_date <= ?');
+    params.push(toDate);
+  }
+  
+  const whereClause = conditions.length > 0 
+    ? 'WHERE ' + conditions.join(' AND ')
+    : '';
+  
+  // Count total
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM entries e ${whereClause}`);
+  const countResult = countStmt.get(...params) as { count: number };
+  const total = countResult.count;
+  
+  // Get entries
+  const selectStmt = db.prepare(`
+    SELECT e.* FROM entries e 
+    ${whereClause}
+    ORDER BY e.created_at DESC 
+    LIMIT ? OFFSET ?
+  `);
+  const rows = selectStmt.all(...params, limit, offset) as Record<string, unknown>[];
+  
+  return {
+    entries: rows.map(rowToEntry),
+    total,
+    hasMore: offset + rows.length < total,
+  };
 }
 
 // ============================================
@@ -358,6 +520,78 @@ export function getJournalDir(vaultPath: string): string {
  */
 export function resolveNotePath(relpath: string, vaultPath: string): string {
   return path.join(vaultPath, relpath);
+}
+
+// ============================================
+// Entry links (related entries)
+// ============================================
+
+export type LinkType = 'related' | 'followup' | 'reference';
+
+export interface EntryLink {
+  sourceId: string;
+  targetId: string;
+  linkType: LinkType;
+  createdAt: string;
+}
+
+export function addEntryLink(sourceId: string, targetId: string, linkType: LinkType = 'related'): void {
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO entry_links (source_id, target_id, link_type)
+    VALUES (?, ?, ?)
+  `);
+  stmt.run(sourceId, targetId, linkType);
+}
+
+export function removeEntryLink(sourceId: string, targetId: string): void {
+  const stmt = db.prepare('DELETE FROM entry_links WHERE source_id = ? AND target_id = ?');
+  stmt.run(sourceId, targetId);
+}
+
+export function getEntryLinks(entryId: string): { linked: Entry[]; linkedBy: Entry[] } {
+  // Get entries this entry links to
+  const linkedStmt = db.prepare(`
+    SELECT e.* FROM entries e
+    JOIN entry_links l ON l.target_id = e.id
+    WHERE l.source_id = ?
+    ORDER BY e.created_at DESC
+  `);
+  const linkedRows = linkedStmt.all(entryId) as Record<string, unknown>[];
+  
+  // Get entries that link to this entry
+  const linkedByStmt = db.prepare(`
+    SELECT e.* FROM entries e
+    JOIN entry_links l ON l.source_id = e.id
+    WHERE l.target_id = ?
+    ORDER BY e.created_at DESC
+  `);
+  const linkedByRows = linkedByStmt.all(entryId) as Record<string, unknown>[];
+  
+  return {
+    linked: linkedRows.map(rowToEntry),
+    linkedBy: linkedByRows.map(rowToEntry),
+  };
+}
+
+export function getAllLinksForEntry(entryId: string): EntryLink[] {
+  const stmt = db.prepare(`
+    SELECT source_id, target_id, link_type, created_at 
+    FROM entry_links 
+    WHERE source_id = ? OR target_id = ?
+  `);
+  const rows = stmt.all(entryId, entryId) as Array<{
+    source_id: string;
+    target_id: string;
+    link_type: string;
+    created_at: string;
+  }>;
+  
+  return rows.map(row => ({
+    sourceId: row.source_id,
+    targetId: row.target_id,
+    linkType: row.link_type as LinkType,
+    createdAt: row.created_at,
+  }));
 }
 
 // Export database instance for advanced queries

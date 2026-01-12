@@ -1,13 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useTheme } from 'next-themes';
+import { toast } from 'sonner';
+import { 
+  ArrowLeft, 
+  Settings2, 
+  Cpu, 
+  HardDrive, 
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
+} from 'lucide-react';
 import Link from 'next/link';
-import { ArrowLeft, Save, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -15,387 +34,614 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { useSettings, usePrerequisites, useWhisperModels } from '@/hooks/use-entry';
-import { PrerequisitesCheckComponent } from '@/components/prerequisites-check';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
+import { cn } from '@/lib/utils';
+import { useSettings, useWhisperModels, useOllamaModels } from '@/hooks/use-entry';
+import type { Settings } from '@/types';
 
-const WHISPER_MODELS = [
-  { value: 'tiny', label: 'Tiny (~75MB)', description: 'Fastest, lower accuracy' },
-  { value: 'base', label: 'Base (~150MB)', description: 'Fast, good for clear audio' },
-  { value: 'small', label: 'Small (~500MB)', description: 'Balanced speed/accuracy' },
-  { value: 'medium', label: 'Medium (~1.5GB)', description: 'Better accuracy, slower' },
-  { value: 'large-v3', label: 'Large V3 (~3GB)', description: 'Best accuracy, slowest' },
+type SettingsTab = 'general' | 'transcription' | 'storage';
+
+// Common timezone options
+const TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern Time (US)' },
+  { value: 'America/Chicago', label: 'Central Time (US)' },
+  { value: 'America/Denver', label: 'Mountain Time (US)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (US)' },
+  { value: 'America/Anchorage', label: 'Alaska Time' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii Time' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Central European Time' },
+  { value: 'Europe/Berlin', label: 'Berlin (CET)' },
+  { value: 'Asia/Tokyo', label: 'Japan Standard Time' },
+  { value: 'Asia/Shanghai', label: 'China Standard Time' },
+  { value: 'Asia/Kolkata', label: 'India Standard Time' },
+  { value: 'Australia/Sydney', label: 'Australian Eastern Time' },
+  { value: 'UTC', label: 'UTC' },
 ];
 
-const OLLAMA_MODELS = [
-  { value: 'gpt-oss:20b', label: 'GPT-OSS 20B', description: 'OpenAI open-weight, 14GB' },
-  { value: 'gpt-oss:120b', label: 'GPT-OSS 120B', description: 'Larger model, 65GB' },
-  { value: 'qwen3:8b', label: 'Qwen 3 8B', description: 'Fast & capable, 5.2GB' },
-  { value: 'qwen2.5:7b', label: 'Qwen 2.5 7B', description: 'Good balance, 4GB' },
-  { value: 'llama3.2:3b', label: 'Llama 3.2 3B', description: 'Faster, smaller' },
-  { value: 'llama3.1:8b', label: 'Llama 3.1 8B', description: 'Good reasoning' },
-  { value: 'mistral:7b', label: 'Mistral 7B', description: 'Good for writing' },
-];
+interface NavItemProps {
+  id: SettingsTab;
+  label: string;
+  icon: React.ReactNode;
+  isActive: boolean;
+  onClick: (id: SettingsTab) => void;
+}
+
+function NavItem({ id, label, icon, isActive, onClick }: NavItemProps) {
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+        isActive 
+          ? "bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100" 
+          : "text-stone-500 hover:bg-stone-50 hover:text-stone-900 dark:hover:bg-stone-900 dark:hover:text-stone-100"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <Skeleton className="h-6 w-40 mb-2" />
+        <Skeleton className="h-4 w-64" />
+      </div>
+      <Separator />
+      <Card className="border-stone-200 dark:border-stone-800">
+        <CardHeader>
+          <Skeleton className="h-5 w-32 mb-1" />
+          <Skeleton className="h-4 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
-  const { settings, isLoading, updateSettings, refetch } = useSettings();
-  const { prerequisites, isLoading: prereqLoading, refetch: refetchPrereq } = usePrerequisites();
-  const { data: whisperModels, refetch: refetchWhisperModels } = useWhisperModels();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   
-  const [formData, setFormData] = useState({
-    vaultPath: '',
-    whisperModelName: 'small',
-    whisperModelPath: '',
-    whisperPrompt: '',
-    ollamaBaseUrl: 'http://localhost:11434',
-    ollamaModel: 'gpt-oss:20b',
-    keepAudio: true,
-    defaultTimezone: '',
-    userName: '',
-  });
+  // Load settings from API
+  const { settings, isLoading: settingsLoading, updateSettings, refetch } = useSettings();
+  
+  // Local form state
+  const [formData, setFormData] = useState<Partial<Settings>>({});
+  const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  // Whisper models
+  const { data: whisperData, isLoading: whisperLoading } = useWhisperModels();
+  
+  // Ollama models - use formData.ollamaBaseUrl or default
+  const ollamaBaseUrl = formData.ollamaBaseUrl || settings?.ollamaBaseUrl || 'http://localhost:11434';
+  const { models: ollamaModels, isLoading: ollamaLoading, error: ollamaError, refetch: refetchOllama } = useOllamaModels(ollamaBaseUrl);
 
-  // Load settings into form
+  // Sync settings to form when loaded
   useEffect(() => {
-    if (settings) {
+    if (settings && !isDirty) {
       setFormData({
-        vaultPath: settings.vaultPath || '',
-        whisperModelName: settings.whisperModelName || 'small',
-        whisperModelPath: settings.whisperModelPath || '',
-        whisperPrompt: settings.whisperPrompt || '',
-        ollamaBaseUrl: settings.ollamaBaseUrl || 'http://localhost:11434',
-        ollamaModel: settings.ollamaModel || 'qwen2.5:7b',
-        keepAudio: settings.keepAudio ?? true,
-        defaultTimezone: settings.defaultTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        userName: settings.userName || '',
+        userName: settings.userName,
+        defaultTimezone: settings.defaultTimezone,
+        whisperModelName: settings.whisperModelName,
+        whisperPrompt: settings.whisperPrompt,
+        ollamaBaseUrl: settings.ollamaBaseUrl,
+        ollamaModel: settings.ollamaModel,
+        vaultPath: settings.vaultPath,
+        keepAudio: settings.keepAudio,
       });
     }
-  }, [settings]);
+  }, [settings, isDirty]);
 
-  const handleChange = (key: string, value: string | boolean) => {
+  // Avoid hydration mismatch for theme
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Update form field
+  const updateField = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
-    setHasChanges(true);
+    setIsDirty(true);
+    // Clear validation error when field changes
+    if (validationErrors[key]) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }, [validationErrors]);
+
+  // Validate vault path
+  const validateVaultPath = async (path: string): Promise<boolean> => {
+    if (!path || path.trim() === '') {
+      setValidationErrors(prev => ({ ...prev, vaultPath: 'Vault path is required' }));
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/validate-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.valid) {
+        setValidationErrors(prev => ({ ...prev, vaultPath: result.error }));
+        return false;
+      }
+      
+      return true;
+    } catch {
+      setValidationErrors(prev => ({ ...prev, vaultPath: 'Failed to validate path' }));
+      return false;
+    }
   };
 
+  // Save settings
   const handleSave = async () => {
     setIsSaving(true);
+    setValidationErrors({});
+
     try {
+      // Validate vault path if it changed
+      if (formData.vaultPath !== settings?.vaultPath) {
+        const isValid = await validateVaultPath(formData.vaultPath || '');
+        if (!isValid) {
+          setIsSaving(false);
+          return;
+        }
+      }
+
       await updateSettings(formData);
-      setHasChanges(false);
-      toast.success('Settings saved successfully');
+      setIsDirty(false);
+      toast.success('Settings saved');
+      refetch();
     } catch (err) {
-      toast.error('Failed to save settings');
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading settings...</div>
-      </div>
-    );
-  }
+  // Refetch Ollama models when base URL changes
+  const handleOllamaUrlBlur = () => {
+    if (formData.ollamaBaseUrl && formData.ollamaBaseUrl !== settings?.ollamaBaseUrl) {
+      refetchOllama(formData.ollamaBaseUrl);
+    }
+  };
+
+  const isLoading = settingsLoading;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Toaster />
+    <div className="min-h-screen bg-white dark:bg-stone-950">
+      <Toaster position="bottom-right" />
       
       {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <h1 className="text-xl font-bold">Settings</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
-              <Save className="h-4 w-4 mr-2" />
-              {isSaving ? 'Saving...' : 'Save Changes'}
+      <header className="sticky top-0 z-10 flex h-14 items-center border-b border-stone-200 dark:border-stone-800 bg-white/80 dark:bg-stone-950/80 px-6 backdrop-blur-md">
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" className="-ml-2 h-9 w-9 text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
+              <ArrowLeft className="h-5 w-5" />
             </Button>
-          </div>
+          </Link>
+          <div className="h-4 w-px bg-stone-200 dark:bg-stone-800" />
+          <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Settings</h1>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
-        {/* Prerequisites Status */}
-        <PrerequisitesCheckComponent
-          prerequisites={prerequisites}
-          isLoading={prereqLoading}
-          error={null}
-          onRefresh={refetchPrereq}
-        />
+      <main className="mx-auto max-w-5xl p-6">
+        <div className="grid grid-cols-12 gap-8">
+          {/* Sidebar Navigation */}
+          <div className="col-span-3 space-y-1">
+            <NavItem 
+              id="general" 
+              label="General" 
+              icon={<Settings2 className="h-4 w-4" />} 
+              isActive={activeTab === 'general'} 
+              onClick={setActiveTab} 
+            />
+            <NavItem 
+              id="transcription" 
+              label="Intelligence" 
+              icon={<Cpu className="h-4 w-4" />} 
+              isActive={activeTab === 'transcription'} 
+              onClick={setActiveTab} 
+            />
+            <NavItem 
+              id="storage" 
+              label="Data & Storage" 
+              icon={<HardDrive className="h-4 w-4" />} 
+              isActive={activeTab === 'storage'} 
+              onClick={setActiveTab} 
+            />
+          </div>
 
-        <Separator />
-
-        {/* Vault Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Obsidian Vault</CardTitle>
-            <CardDescription>
-              Configure where journal entries are saved
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="vaultPath">Vault Path</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="vaultPath"
-                  value={formData.vaultPath}
-                  onChange={(e) => handleChange('vaultPath', e.target.value)}
-                  placeholder="/path/to/your/obsidian/vault"
-                  className="flex-1"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                The folder where your Obsidian vault is located. Journal entries will be saved here.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* User Profile */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Personalize your journal entries
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="userName">Your Name</Label>
-              <Input
-                id="userName"
-                value={formData.userName}
-                onChange={(e) => handleChange('userName', e.target.value)}
-                placeholder="Enter your name"
-              />
-              <p className="text-xs text-muted-foreground">
-                Used to personalize your Daily Strategic Journal entries. Leave blank for generic format.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Whisper Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Transcription (Whisper)</CardTitle>
-            <CardDescription>
-              Configure speech-to-text settings
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="whisperModel">Model</Label>
-              <Select
-                value={formData.whisperModelName}
-                onValueChange={(v) => {
-                  handleChange('whisperModelName', v);
-                  // Refetch models to update installed status display
-                  refetchWhisperModels();
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {WHISPER_MODELS.map((model) => {
-                    const modelInfo = whisperModels?.models.find(m => m.name === model.value);
-                    const isInstalled = modelInfo?.installed ?? false;
+          {/* Content Area */}
+          <div className="col-span-9 space-y-6">
+            {isLoading ? (
+              <SettingsSkeleton />
+            ) : (
+              <>
+                {/* General Tab */}
+                {activeTab === 'general' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div>
+                      <h2 className="text-lg font-medium text-stone-900 dark:text-stone-100">General Settings</h2>
+                      <p className="text-sm text-stone-500">Manage your profile and preferences.</p>
+                    </div>
+                    <Separator />
                     
-                    return (
-                      <SelectItem key={model.value} value={model.value}>
-                        <div className="flex items-center gap-2">
-                          {isInstalled ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-                          ) : (
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
-                          )}
-                          <span className="font-medium">{model.label}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {model.description}
-                          </span>
+                    {/* Profile */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Profile</CardTitle>
+                        <CardDescription>Your name is used in journal prompts.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="userName">Your Name</Label>
+                          <Input
+                            id="userName"
+                            placeholder="Enter your name"
+                            value={formData.userName || ''}
+                            onChange={(e) => updateField('userName', e.target.value)}
+                          />
                         </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              
-              {/* Show warning if selected model is not installed */}
-              {whisperModels && !whisperModels.selectedModelInstalled && formData.whisperModelName === whisperModels.selectedModel && (
-                <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-900">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm">
-                    <p className="font-medium text-amber-800 dark:text-amber-200">
-                      Model &quot;{formData.whisperModelName}&quot; is not installed
-                    </p>
-                    <p className="text-amber-700 dark:text-amber-300 mt-1">
-                      Run in terminal:
-                    </p>
-                    <code className="block mt-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/50 rounded text-xs font-mono">
-                      npm run setup:whisper:{formData.whisperModelName}
-                    </code>
+                      </CardContent>
+                    </Card>
+
+                    {/* Appearance */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Appearance</CardTitle>
+                        <CardDescription>Customize how Muesli looks.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Theme</Label>
+                          {mounted && (
+                            <Select value={theme} onValueChange={setTheme}>
+                              <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Select theme" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="light">Light</SelectItem>
+                                <SelectItem value="dark">Dark</SelectItem>
+                                <SelectItem value="system">System</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                          <p className="text-xs text-stone-500">
+                            Choose your preferred color scheme. &ldquo;System&rdquo; follows your OS setting.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Locale */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Locale</CardTitle>
+                        <CardDescription>Set your default timezone for journal entries.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="timezone">Default Timezone</Label>
+                          <Select 
+                            value={formData.defaultTimezone || 'UTC'} 
+                            onValueChange={(value) => updateField('defaultTimezone', value)}
+                          >
+                            <SelectTrigger id="timezone">
+                              <SelectValue placeholder="Select timezone" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TIMEZONES.map((tz) => (
+                                <SelectItem key={tz.value} value={tz.value}>
+                                  {tz.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={handleSave} 
+                        disabled={!isDirty || isSaving}
+                        className="min-w-[120px]"
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
-              
-              {/* Show success if model is installed */}
-              {whisperModels && whisperModels.selectedModelInstalled && formData.whisperModelName === whisperModels.selectedModel && (
-                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>Model installed and ready</span>
-                </div>
-              )}
-            </div>
+                )}
 
-            <div className="space-y-2">
-              <Label htmlFor="whisperModelPath">Custom Model Path (Optional)</Label>
-              <Input
-                id="whisperModelPath"
-                value={formData.whisperModelPath}
-                onChange={(e) => handleChange('whisperModelPath', e.target.value)}
-                placeholder="Leave empty for default (~/.whisper/models/)"
-              />
-              <p className="text-xs text-muted-foreground">
-                Override the default model path if you have models in a custom location.
-              </p>
-            </div>
+                {/* Intelligence Tab */}
+                {activeTab === 'transcription' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div>
+                      <h2 className="text-lg font-medium text-stone-900 dark:text-stone-100">Intelligence</h2>
+                      <p className="text-sm text-stone-500">Configure AI models for transcription and processing.</p>
+                    </div>
+                    <Separator />
 
-            <div className="space-y-2">
-              <Label htmlFor="whisperPrompt">Transcription Prompt (Optional)</Label>
-              <Textarea
-                id="whisperPrompt"
-                value={formData.whisperPrompt}
-                onChange={(e) => handleChange('whisperPrompt', e.target.value)}
-                placeholder="Claude Code, Obsidian, Next.js, TypeScript, shadcn, Tailwind"
-                rows={3}
-              />
-              <p className="text-xs text-muted-foreground">
-                Provide context to improve transcription accuracy. Include names, technical terms,
-                or words that are frequently misheard. Separate with commas.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+                    {/* Whisper */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Transcription (Whisper)</CardTitle>
+                        <CardDescription>Configure the speech-to-text model.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Model Size</Label>
+                          {whisperLoading ? (
+                            <Skeleton className="h-10 w-full" />
+                          ) : (
+                            <Select 
+                              value={formData.whisperModelName || 'small'} 
+                              onValueChange={(value) => updateField('whisperModelName', value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select model" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {whisperData?.models.map((model) => (
+                                  <SelectItem key={model.name} value={model.name}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="capitalize">{model.name}</span>
+                                      <span className="text-xs text-stone-400">({model.size})</span>
+                                      {model.installed ? (
+                                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                                      ) : (
+                                        <span className="text-xs text-amber-500">Not installed</span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          
+                          {/* Warning if selected model not installed */}
+                          {whisperData && formData.whisperModelName && 
+                            !whisperData.models.find(m => m.name === formData.whisperModelName)?.installed && (
+                            <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-sm">
+                              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="font-medium">Model not installed</p>
+                                <p className="text-xs mt-1">
+                                  Run: <code className="bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 rounded">npm run setup:whisper:{formData.whisperModelName}</code>
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
-        {/* Ollama Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Processing (Ollama)</CardTitle>
-            <CardDescription>
-              Configure the local LLM for journal generation
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="ollamaBaseUrl">Ollama URL</Label>
-              <Input
-                id="ollamaBaseUrl"
-                value={formData.ollamaBaseUrl}
-                onChange={(e) => handleChange('ollamaBaseUrl', e.target.value)}
-                placeholder="http://localhost:11434"
-              />
-            </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="whisperPrompt">Whisper Prompt (Optional)</Label>
+                          <Textarea
+                            id="whisperPrompt"
+                            placeholder="Optional context to improve transcription accuracy..."
+                            value={formData.whisperPrompt || ''}
+                            onChange={(e) => updateField('whisperPrompt', e.target.value)}
+                            rows={3}
+                          />
+                          <p className="text-xs text-stone-500">
+                            Provide context like names, technical terms, or speaking style to improve accuracy.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-            <div className="space-y-2">
-              <Label htmlFor="ollamaModel">Model</Label>
-              <Select
-                value={formData.ollamaModel}
-                onValueChange={(v) => handleChange('ollamaModel', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {OLLAMA_MODELS.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      <div>
-                        <span className="font-medium">{model.label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          {model.description}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Make sure the model is pulled: <code>ollama pull {formData.ollamaModel}</code>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+                    {/* Ollama */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Language Model (Ollama)</CardTitle>
+                        <CardDescription>Configure the LLM for journal generation.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ollamaUrl">Ollama URL</Label>
+                          <Input
+                            id="ollamaUrl"
+                            placeholder="http://localhost:11434"
+                            value={formData.ollamaBaseUrl || ''}
+                            onChange={(e) => updateField('ollamaBaseUrl', e.target.value)}
+                            onBlur={handleOllamaUrlBlur}
+                          />
+                        </div>
 
-        {/* Storage Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Storage</CardTitle>
-            <CardDescription>
-              Configure file storage behavior
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Keep Audio Files</Label>
-                <p className="text-xs text-muted-foreground">
-                  Store original audio recordings alongside journal entries
-                </p>
-              </div>
-              <Select
-                value={formData.keepAudio ? 'true' : 'false'}
-                onValueChange={(v) => handleChange('keepAudio', v === 'true')}
-              >
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">Yes</SelectItem>
-                  <SelectItem value="false">No</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+                        <div className="space-y-2">
+                          <Label>Model</Label>
+                          {ollamaLoading ? (
+                            <Skeleton className="h-10 w-full" />
+                          ) : ollamaError ? (
+                            <div className="space-y-2">
+                              <Select disabled>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Cannot load models" />
+                                </SelectTrigger>
+                              </Select>
+                              <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-sm">
+                                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <p className="font-medium">Cannot connect to Ollama</p>
+                                  <p className="text-xs mt-1">{ollamaError}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <Select 
+                              value={formData.ollamaModel || ''} 
+                              onValueChange={(value) => updateField('ollamaModel', value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select model" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ollamaModels.length === 0 ? (
+                                  <div className="p-2 text-sm text-stone-500 text-center">
+                                    No models installed
+                                  </div>
+                                ) : (
+                                  ollamaModels.map((model) => (
+                                    <SelectItem key={model.name} value={model.name}>
+                                      <div className="flex items-center gap-2">
+                                        <span>{model.name}</span>
+                                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                                      </div>
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          
+                          {/* Warning if selected model not in list */}
+                          {!ollamaError && !ollamaLoading && formData.ollamaModel && ollamaModels.length > 0 && 
+                            !ollamaModels.some(m => m.name === formData.ollamaModel) && (
+                            <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-200 text-sm">
+                              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="font-medium">Model not installed</p>
+                                <p className="text-xs mt-1">
+                                  Run: <code className="bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 rounded">ollama pull {formData.ollamaModel}</code>
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
 
-        {/* Timezone */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Timezone</CardTitle>
-            <CardDescription>
-              Your local timezone for journal entries
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="timezone">Timezone</Label>
-              <Input
-                id="timezone"
-                value={formData.defaultTimezone}
-                onChange={(e) => handleChange('defaultTimezone', e.target.value)}
-                placeholder={Intl.DateTimeFormat().resolvedOptions().timeZone}
-              />
-              <p className="text-xs text-muted-foreground">
-                IANA timezone identifier (e.g., America/Los_Angeles, Europe/London)
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={handleSave} 
+                        disabled={!isDirty || isSaving}
+                        className="min-w-[120px]"
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Storage Tab */}
+                {activeTab === 'storage' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div>
+                      <h2 className="text-lg font-medium text-stone-900 dark:text-stone-100">Data & Storage</h2>
+                      <p className="text-sm text-stone-500">Configure where your journal entries are saved.</p>
+                    </div>
+                    <Separator />
+
+                    {/* Vault Path */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Obsidian Vault</CardTitle>
+                        <CardDescription>Journal entries are saved as Markdown files in your vault.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="vaultPath">Vault Path</Label>
+                          <Input
+                            id="vaultPath"
+                            placeholder="/Users/you/Documents/Obsidian/MyVault"
+                            value={formData.vaultPath || ''}
+                            onChange={(e) => updateField('vaultPath', e.target.value)}
+                            className={cn(validationErrors.vaultPath && 'border-red-500')}
+                          />
+                          {validationErrors.vaultPath ? (
+                            <p className="text-xs text-red-500 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {validationErrors.vaultPath}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-stone-500">
+                              Entries are saved to: <code className="bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded">{formData.vaultPath || '...'}/journal/</code>
+                            </p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Audio Files */}
+                    <Card className="border-stone-200 dark:border-stone-800 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium">Audio Files</CardTitle>
+                        <CardDescription>Configure how audio recordings are handled.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <Label>Keep Audio Files</Label>
+                            <p className="text-xs text-stone-500">
+                              Keep original audio files after processing. Stored in <code className="bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded">journal/audio/</code>
+                            </p>
+                          </div>
+                          <Switch 
+                            checked={formData.keepAudio ?? true}
+                            onCheckedChange={(checked: boolean) => updateField('keepAudio', checked)}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={handleSave} 
+                        disabled={!isDirty || isSaving}
+                        className="min-w-[120px]"
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </main>
     </div>
   );

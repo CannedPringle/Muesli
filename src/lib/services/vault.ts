@@ -1,10 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { getAllSettings, resolveNotePath, getJournalDir } from '@/lib/db';
-import { createSection, replaceSection, parseSectionsStrict, type SectionName } from '@/lib/markdown';
-import type { Entry, EntryType, PromptAnswers, GeneratedSections, NoteFrontmatter } from '@/types';
+import { createSection, replaceSection, parseSectionsStrict, getSection, type SectionName } from '@/lib/markdown';
+import type { Entry, PromptAnswers, GeneratedSections, NoteFrontmatter } from '@/types';
 
 /**
  * Generate filename for a journal entry
@@ -354,4 +353,114 @@ export function getObsidianUri(vaultPath: string, noteRelpath: string): string {
  */
 export function getRevealCommand(fullPath: string): string {
   return `open -R "${fullPath}"`;
+}
+
+/**
+ * Section header templates for rebuilding content
+ * Maps section name to header format
+ */
+const SECTION_HEADERS: Record<string, string> = {
+  JOURNAL: '## User – Daily Strategic Journal',
+  TRANSCRIPT: '', // Special handling - uses <details> wrapper
+  GRATITUDE: '## Gratitude',
+  ACCOMPLISHMENTS: '## Accomplishments',
+  CHALLENGES: '## Challenges & Lessons',
+  TOMORROW: "## Tomorrow's Focus",
+  AI_REFLECTION: '## Reflection',
+};
+
+/**
+ * Update content of multiple sections in an existing note.
+ * Preserves section markers and structure.
+ * Uses atomic write pattern.
+ * 
+ * @param entry - The entry whose note to update
+ * @param editedSections - Map of section name to new content (without headers)
+ * @returns Object with new mtime for drift detection
+ */
+export async function updateNoteContent(
+  entry: Entry,
+  editedSections: Record<string, string>
+): Promise<{ mtime: number }> {
+  if (!entry.noteRelpath) {
+    throw new Error('Entry has no note file');
+  }
+  
+  const settings = getAllSettings();
+  if (!settings.vaultPath) {
+    throw new Error('Vault path not configured');
+  }
+  
+  const fullPath = resolveNotePath(entry.noteRelpath, settings.vaultPath);
+  const tempPath = `${fullPath}.tmp.${Date.now()}`;
+  
+  // Read existing file
+  let content: string;
+  try {
+    content = await fs.readFile(fullPath, 'utf-8');
+  } catch {
+    throw new Error(`Note file not found: ${entry.noteRelpath}`);
+  }
+  
+  // Validate structure before editing
+  parseSectionsStrict(content);
+  
+  // Update each section
+  for (const [sectionName, newContent] of Object.entries(editedSections)) {
+    // Skip non-existent sections
+    const section = getSection(content, sectionName as SectionName);
+    if (!section) {
+      console.warn(`Section ${sectionName} not found in note, skipping`);
+      continue;
+    }
+    
+    // Build the full section content with header
+    let fullContent: string;
+    
+    if (sectionName === 'TRANSCRIPT') {
+      // Transcript uses <details> wrapper (for brain-dump and daily-reflection)
+      // Check if original had details wrapper
+      const hasDetails = section.content.includes('<details>');
+      if (hasDetails) {
+        fullContent = `<details>
+<summary>Raw Transcript</summary>
+
+${newContent}
+
+</details>`;
+      } else {
+        // Quick-note style - plain transcript with header
+        fullContent = `## Transcript\n\n${newContent}`;
+      }
+    } else {
+      // Regular section with header
+      const header = SECTION_HEADERS[sectionName];
+      if (header) {
+        fullContent = `${header}\n\n${newContent}`;
+      } else {
+        // Unknown section, just use the content as-is
+        fullContent = newContent;
+      }
+    }
+    
+    // Replace the section content
+    content = replaceSection(content, sectionName as SectionName, fullContent);
+  }
+  
+  try {
+    // Write to temp file
+    await fs.writeFile(tempPath, content, 'utf-8');
+    
+    // Atomic rename
+    await fs.rename(tempPath, fullPath);
+    
+    // Get new mtime
+    const stat = await fs.stat(fullPath);
+    
+    return { mtime: stat.mtimeMs };
+  } catch (err) {
+    // Clean up temp file on failure
+    await fs.unlink(tempPath).catch(() => {});
+    throw err;
+  }
 }

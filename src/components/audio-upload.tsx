@@ -10,19 +10,6 @@ interface AudioUploadProps {
   disabled?: boolean;
 }
 
-const ACCEPTED_TYPES = [
-  'audio/webm',
-  'audio/mp3',
-  'audio/mpeg',
-  'audio/mp4',
-  'audio/m4a',
-  'audio/x-m4a',
-  'audio/wav',
-  'audio/wave',
-  'audio/ogg',
-  'audio/flac',
-];
-
 const ACCEPTED_EXTENSIONS = '.webm,.mp3,.m4a,.wav,.ogg,.flac,.mp4,.mpeg';
 
 export function AudioUpload({ onFileSelected, disabled }: AudioUploadProps) {
@@ -75,7 +62,9 @@ export function AudioUpload({ onFileSelected, disabled }: AudioUploadProps) {
     const audioFile = files.find(f => f.type.startsWith('audio/'));
     
     if (audioFile) {
-      handleFile(audioFile);
+      if (validateFile(audioFile)) {
+        setSelectedFile(audioFile);
+      }
     } else {
       setError('Please drop an audio file');
     }

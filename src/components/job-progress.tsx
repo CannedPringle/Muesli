@@ -1,15 +1,15 @@
 'use client';
 
-import { Loader2, CheckCircle2, XCircle, Clock, AlertCircle, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { JobStage } from '@/types';
-import { STAGE_WEIGHTS, calculateOverallProgress } from '@/types';
+import { calculateOverallProgress } from '@/types';
 
 // Parse error messages and provide actionable suggestions
-function getErrorHelp(errorMessage: string | null | undefined, stage: JobStage): {
+function getErrorHelp(errorMessage: string | null | undefined): {
   title: string;
   description: string;
   action?: { label: string; href?: string; command?: string };
@@ -235,7 +235,7 @@ export function JobProgress({
               
               {/* Actionable error help */}
               {(() => {
-                const help = getErrorHelp(errorMessage, stage);
+                const help = getErrorHelp(errorMessage);
                 if (!help) return null;
                 
                 return (
