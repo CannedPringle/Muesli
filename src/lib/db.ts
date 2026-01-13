@@ -95,6 +95,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_entry_links_target ON entry_links(target_id);
 `);
 
+// Migration: Add title column if missing (for databases created before title was added)
+try {
+  const tableInfo = db.prepare("PRAGMA table_info(entries)").all() as { name: string }[];
+  const hasTitle = tableInfo.some(col => col.name === 'title');
+  if (!hasTitle) {
+    db.exec('ALTER TABLE entries ADD COLUMN title TEXT');
+  }
+} catch {
+  // Ignore migration errors
+}
+
 // Create trigger for auto-updating updated_at
 db.exec(`
   CREATE TRIGGER IF NOT EXISTS entries_updated_at 
@@ -165,6 +176,9 @@ const defaultSettings: [SettingKey, string][] = [
   ['keep_audio', 'true'],
   ['default_timezone', Intl.DateTimeFormat().resolvedOptions().timeZone],
   ['user_name', ''],
+  ['vad_enabled', 'false'],
+  ['vad_model_path', ''],
+  ['chunk_duration_seconds', '60'],
 ];
 
 const insertSetting = db.prepare(
@@ -469,6 +483,9 @@ export function getAllSettings(): Settings {
     keepAudio: settingsMap.get('keep_audio') !== 'false',
     defaultTimezone: settingsMap.get('default_timezone') ?? 'UTC',
     userName: settingsMap.get('user_name') ?? '',
+    vadEnabled: settingsMap.get('vad_enabled') === 'true',
+    vadModelPath: settingsMap.get('vad_model_path') || null,
+    chunkDurationSeconds: parseInt(settingsMap.get('chunk_duration_seconds') ?? '60', 10),
   };
 }
 

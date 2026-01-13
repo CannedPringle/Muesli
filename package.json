@@ -13,7 +13,8 @@
     "setup:whisper:base": "bash scripts/setup-whisper.sh base",
     "setup:whisper:small": "bash scripts/setup-whisper.sh small",
     "setup:whisper:medium": "bash scripts/setup-whisper.sh medium",
-    "setup:whisper:large": "bash scripts/setup-whisper.sh large-v3"
+    "setup:whisper:large": "bash scripts/setup-whisper.sh large-v3",
+    "setup:vad": "bash scripts/download-vad-model.sh"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",

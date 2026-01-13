@@ -8,8 +8,9 @@ import {
   resolveAudioPath,
   getAllSettings,
 } from '@/lib/db';
+import path from 'path';
 import { normalizeAudio, deleteAudioFile } from '@/lib/services/audio';
-import { transcribe } from '@/lib/services/transcribe';
+import { transcribe, transcribeChunked } from '@/lib/services/transcribe';
 import { generateJournal } from '@/lib/services/llm';
 import { writeNote } from '@/lib/services/vault';
 import type { JobStage, PromptAnswers, GeneratedSections } from '@/types';
@@ -194,10 +195,25 @@ async function runJob(entryId: string): Promise<void> {
     }
     
     const wavPath = resolveAudioPath(currentEntry.normalizedAudioRelpath, settings.vaultPath!);
+    const audioDuration = currentEntry.audioDurationSeconds || 0;
+    const chunkDuration = settings.chunkDurationSeconds || 60; // Default 60 seconds
     
-    const result = await transcribe(wavPath, {
-      onProcess: (proc) => childProcesses.set(entryId, proc),
-    });
+    let result;
+    if (audioDuration > chunkDuration) {
+      // Use chunked transcription for long audio
+      const tempDir = path.dirname(wavPath);
+      console.log(`[JobRunner] Using chunked transcription for ${audioDuration.toFixed(1)}s audio (chunk size: ${chunkDuration}s)`);
+      result = await transcribeChunked(wavPath, audioDuration, tempDir, {
+        chunkDurationSeconds: chunkDuration,
+        overlapSeconds: 5,
+        onProcess: (proc) => childProcesses.set(entryId, proc),
+      });
+    } else {
+      // Use regular transcription for short audio
+      result = await transcribe(wavPath, {
+        onProcess: (proc) => childProcesses.set(entryId, proc),
+      });
+    }
     
     childProcesses.delete(entryId);
     

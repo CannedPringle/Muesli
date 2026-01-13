@@ -90,7 +90,10 @@ export type SettingKey =
   | 'ollama_model'
   | 'keep_audio'
   | 'default_timezone'
-  | 'user_name';
+  | 'user_name'
+  | 'vad_enabled'
+  | 'vad_model_path'
+  | 'chunk_duration_seconds';
 
 export interface Settings {
   vaultPath: string | null;
@@ -102,6 +105,9 @@ export interface Settings {
   keepAudio: boolean;
   defaultTimezone: string;
   userName: string;
+  vadEnabled: boolean;
+  vadModelPath: string | null;
+  chunkDurationSeconds: number;
 }
 
 // Markdown parsing
